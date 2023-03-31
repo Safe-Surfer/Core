@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  safesurfer:
+  - apiVersion: v2
+    appVersion: 2.6.0
+    created: "2023-03-31T15:47:44.3431599+13:00"
+    description: Deploy Safe Surfer.
+    digest: 73a8325982c5b7ce47e34f5ac0e887cf83e6d7e079d883ed8a214980c2b11ccd
+    name: safesurfer
+    type: application
+    urls:
+    - https://safe-surfer.github.io/core/safesurfer-7.3.0.tgz
+    version: 7.3.0
+generated: "2023-03-31T15:47:44.3274207+13:00"
