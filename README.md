@@ -52,7 +52,7 @@ Contact us at [info@safesurfer.io](mailto:info@safesurfer.io) for a license key.
 This is the initial release. We plan to make new releases bi-annually. Detailed changelogs will be posted.
 
 ## Other resources
-- [API docs](https://safesurfer.gitlab.io/core/api-docs/)
-- [Admin App API docs](https://safesurfer.gitlab.io/core/admin-app-api-docs/)
+- [API docs](https://safesurfer.gitlab.io/api-docs/)
+- [Admin App API docs](https://safesurfer.gitlab.io/admin-app-api-docs/)
 - [Safe Surfer for ISPs page](https://safesurfer.io/for-isp/)
 - See the full [values.yaml](./charts/safesurfer/values.yaml) for all possible configuration options.

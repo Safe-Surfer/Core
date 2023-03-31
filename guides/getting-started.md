@@ -195,7 +195,7 @@ from `http://localhost:8085` in your browser.
 - If you have overridden `categorizer.adminApp.svcPort`, substitute that for `8080`.
 
 ## Using the admin app
-The admin app can be used to manage domains, categories, restrictions, IP addresses, users, and anonymized usage data. You can use the GUI, or you can automate tasks using the [admin API](https://safesurfer.gitlab.io/core/admin-app-api-docs/). In this guide, we will use the GUI to:
+The admin app can be used to manage domains, categories, restrictions, IP addresses, users, and anonymized usage data. You can use the GUI, or you can automate tasks using the [admin API](https://safesurfer.gitlab.io/admin-app-api-docs/). In this guide, we will use the GUI to:
 - Enforce Safe Search on Google across the whole network
 - Create a category containing domains that will be blocked for everyone
 - Categorize some other (unblocked) sites.
@@ -243,7 +243,7 @@ Now hit `Add`. You should see a result like the following:
 ![](img/restrictions-4.png)
 
 > **Note**
-> This is not the full list of Google Search domains. To get the full list, try enabling domain mirroring to sync from our database. This also includes domains for enforcing safe search on the other search engines and YouTube.
+> This is not the full list of Google Search domains. To get the full list, try [enabling domain mirroring](./domain-mirroring.md) to sync from our database. This also includes domains for enforcing safe search on the other search engines and YouTube.
 
 Now that we have some domains, we're ready to deploy the DNS and see what it does.
 
@@ -540,7 +540,7 @@ dig @$DNS_IP exampleadultsite.com
 
 DNS resolution fails because we haven't specified a domain to redirect to when a domain is blocked. This may be the behavior you want, but it isn't recommended as users can confuse this for internet connection issues rather than blocking.
 
-We will update this in one of the next sections - creating a block page.
+We will update this in one of the next sections - [creating a block page](./block-page.md).
 
 ## Live Updates
 Changes you make in the admin app will instantly sync to the DNS. You can play around more with the DNS at this point - adding new domains, categories, etc. and watch them update by requesting the DNS.

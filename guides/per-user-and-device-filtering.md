@@ -404,7 +404,7 @@ Strict-Transport-Security: max-age=15724800; includeSubDomains
 {"meta":{"timestamp":1679626258,"code":201,"errorCode":"","message":"OK"},"spec":null}
 ```
 
-Now that you have a client device, let's have a look at it on the dashbord. It should look something like this:
+Now that you have a client device, let's have a look at it on the dashboard. It should look something like this:
 
 ![](./img/dashboard-8.png)
 ![](./img/dashboard-9.png)
@@ -453,7 +453,7 @@ Each of the restrictions can apply to particular categories, restrictions, or do
 
 The DNS will respond to the current screentime restrictions by filtering requests appropriately. When internet is blocked, all requests will be blocked, apart from globally whitelisted categories. The router integration will go a step further and coordinate IP blocking to make actions take effect more quickly.
 
-Any kind of device can listen to the live updates websocket of the API, which will send the current block state across every category according to the screentime rules.
+Any kind of device can listen to the [live updates websocket](https://safesurfer.gitlab.io/api-docs/#tag/userv2/operation/getLiveUpdates) of the API, which will send the current block state across every category according to the screentime rules.
 
 To test it out, let's add a timer to the router client device we created. You can do this for any device, but you'll need to update the `dig` commands accordingly.
 

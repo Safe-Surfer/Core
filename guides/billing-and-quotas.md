@@ -73,8 +73,8 @@ Then, create a price point for the addon. Ensure there is a matching currency an
 > The `Flat Fee` option for addons is not supported. To create an on/off addon, you can simply set a `maxQuantity` of `1`.
 
 Now it's time to sign a customer up to the plan. We have a couple of choices here:
-- Use the Chargebee APIs or integrations to create a customer signed up to the plan. Just create the customer with an ID matching that of their Safe Surfer account ID, and as long as the webhooks are set up, they will receive it. (Webhook method)
-- Use the Safe Surfer Billing APIs to create the subscription for them directly. (API method)
+- Use the Chargebee APIs or integrations to create a customer signed up to the plan. Just create the customer with an ID matching that of their Safe Surfer account ID, and as long as the webhooks are set up, they will receive it. ([Webhook method](./billing-and-quotas.md#webhook-method))
+- Use the Safe Surfer Billing APIs to create the subscription for them directly. ([API method](./billing-and-quotas.md#api-method))
 
 We'll look at both approaches in the next section.
 
@@ -133,8 +133,8 @@ You can find the user ID using the `Browse` tab:
 
 ![](./img/users-2.png)
 
-#### API method
-Obtain an auth token for the user. If your accounts are still set to `managed`, use the method described [here](./per-user-and-device-filtering.md). If your accounts aren't managed, you can use the [regular signin API](https://safesurfer.gitlab.io/core/api-docs/#section/Safe-Surfer-API-Docs/Authentication). We will use the `$BILLING_AUTH_TOKEN` variable below as a placeholder for the auth token.
+#### Using the API directly
+Obtain an auth token for the user. If your accounts are still set to `managed`, use the method described [here](./per-user-and-device-filtering.md). If your accounts aren't managed, you can use the [regular signin API](https://safesurfer.gitlab.io/api-docs/#section/Safe-Surfer-API-Docs/Authentication). We will use the `$BILLING_AUTH_TOKEN` variable below as a placeholder for the auth token.
 
 To preview the costs associated with creating the subscription, call the estimate endpoint:
 
@@ -593,7 +593,7 @@ You can also view the new subscription on the user dashboard. Sign in as your ne
 > Some dashboard subscription operations won't work until you configure the plans and addons. See the above section.
 
 ## Manual/custom billing
-The admin app has APIs to support changing the subscription status of users manually, or editing quotas.
+The admin app has APIs to support [changing the subscription status of users manually](https://safesurfer.gitlab.io/admin-app-api-docs/#tag/users/operation/postCourtesySubscription), or [editing quotas](https://safesurfer.gitlab.io/admin-app-api-docs/#tag/users/operation/putUserQuotaGrant).
 
 ### Manual Billing
 You can manually grant a user an active subscription by using the "Courtesy Account" feature. In the GUI (or API), search for a user, then grant them a courtesy account:

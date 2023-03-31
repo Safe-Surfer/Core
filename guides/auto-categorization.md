@@ -58,7 +58,7 @@ categorizer:
           provider: resources-test
 ```
 
-This example stores the machine learning model and crawl resources in redis, which is temporary storage. In production, you should use real object storage as `categorizer.adminApp.storage.provider` so your trained machine learning model is persistent. See the providers section in the full `values.yaml` file for examples. However, you can use redis as crawler storage if you have no requirement to keep the crawl data longer than needed.
+This example stores the machine learning model and crawl resources in redis, which is temporary storage. In production, you should use real object storage as `categorizer.adminApp.storage.provider` so your trained machine learning model is persistent. See the providers section in the full [values.yaml](../charts/safesurfer/values.yaml) file for examples. However, you can use redis as crawler storage if you have no requirement to keep the crawl data longer than needed.
 
 In production, you may also wish to run the `crawlerWorker` in a separate cluster to the rest of your categorizer. This is for a few reasons:
 - To get a variety of public egress IPs at scale, running the `crawlerWorker` in a public cluster is ideal. Your main cluster may be a private cluster, which will have only 1 egress IP.

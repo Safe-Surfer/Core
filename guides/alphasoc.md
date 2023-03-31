@@ -33,7 +33,7 @@ NAME                                           READY   STATUS      RESTARTS     
 safesurfer-alphasoc-0                          1/1     Running     0                37s
 ```
 
-However, no data will be going in to AlphaSOC yet because the `security_alert_endpoints_per_hour` quota is `0` by default. This is because AlphaSOC's [pricing](https://docs.alphasoc.com/licensing/#pricing-tiers) is per-endpoint, so you must consider carefully how many different endpoints to allow. An endpoint in Safe Surfer terms is each device, and router client devices are counted as separate devices in this case. See the [quota guide](./billing-and-quotas.md) for the ways you could configure this. As an example, we will just allow 10 endpoints per hour for all users with the following yaml:
+However, no data will be going in to AlphaSOC yet because the `security_alert_endpoints_per_hour` [quota](./billing-and-quotas.md#api-method) is `0` by default. This is because AlphaSOC's [pricing](https://docs.alphasoc.com/licensing/#pricing-tiers) is per-endpoint, so you must consider carefully how many different endpoints to allow. An endpoint in Safe Surfer terms is each device, and router client devices are counted as separate devices in this case. See the [quota guide](./billing-and-quotas.md) for the ways you could configure this. As an example, we will just allow 10 endpoints per hour for all users with the following yaml:
 
 ```yaml
 api:
@@ -65,7 +65,7 @@ kubectl delete job alphasync-manual
 kubectl create job alphasync-manual --from=cj/safesurfer-alphasoc-sync
 ```
 
-Substitute `safesurfer-alphasoc-sync` for the name of your cronjob. It's ok if the first command reports the job doesn't exist. You can run the sync job as many times as you like without generating duplicate alerts, *but not concurrently*. The cronjob will never run concurrently, but manual runs may so some care is needed.
+Substitute `safesurfer-alphasoc-sync` for the name of your cronjob. It's ok if the first command reports the job doesn't exist. You can run the sync job as many times as you like without generating duplicate alerts, *but not concurrently*. The cronjob will never run concurrently, but manual runs may, so some care is needed.
 
 If successful, the job will show output like the following:
 
@@ -74,4 +74,4 @@ time="2023-03-27T21:28:37Z" level=info msg="creating new db connection"
 time="2023-03-27T21:28:37Z" level=info msg="all alerts have been synced" stats="{\"Success\":0,\"SkippedDeviceOrAccountDeleted\":0,\"SkippedBadDomain\":0,\"SkippedUnknownEventType\":0,\"SkippedDeleted\":0,\"SkippedIgnore\":0}"
 ```
 
-After syncing, alerts are retreived from the Alerts or Security Alerts APIs. This means that they are sent as part of alert emails too. Security Alerts are kept for 90 days, like browsing history.
+After syncing, alerts are retreived from the [Alerts](https://safesurfer.gitlab.io/api-docs/#tag/alertsv2/operation/getAlerts) or [Security Alerts](https://safesurfer.gitlab.io/api-docs/#tag/security-alerts/operation/getSecurityAlerts) APIs. This means that they are sent as part of alert emails too. Security Alerts are kept for 90 days, like browsing history.
