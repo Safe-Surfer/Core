@@ -1,0 +1,43 @@
+{{- if or .Values.db.inCluster.enabled .Values.db.external.enabled }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for DB connection.
+#
+{{ include "dbSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.db.namespace) }}
+{{- end }}
+---
+#
+# Job to run migrations on the configured database.
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Always run even if another job exists
+  name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-migrations-{{ randAlphaNum 10 | lower }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
+spec:
+  backoffLimit: 12
+  template:
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-gitlab-registry
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-migrations
+        image: {{ required "Schema version required" .Values.db.schemaVersion }}
+        env:
+        {{ include "dbEnvs" . | indent 8 }}
+{{- end }}

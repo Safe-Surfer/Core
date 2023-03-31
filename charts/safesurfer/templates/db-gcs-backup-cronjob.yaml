@@ -1,0 +1,50 @@
+#
+# Create a cronjob to take backups to GCS if enabled.
+#
+{{ if and .Values.db.inCluster.enabled .Values.db.backups.gcs.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
+spec:
+  schedule: {{ .Values.db.backups.gcs.schedule }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-gitlab-registry
+          containers:
+            - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
+              image: registry.gitlab.com/safesurfer/core/postgres/gcs-backup:0.0.1
+              command:
+              - bash
+              args:
+              - -c
+              # First set up gsutil with auth from environment variables. Then, take a pg_dump backup
+              # and pipe to a file in a GCS bucket.
+              - >
+                (printf "$APP_GOOG_KEY\n$APP_GOOG_SECRET\n" | gsutil config -a) &&
+                gcloud config set pass_credentials_to_gsutil false &&
+                (pg_dump | gsutil cp - gs://$APP_GOOG_BUCKET/backup-$(date --iso-8601).sql)
+              env:
+              # GCS variables
+              - name: APP_GOOG_KEY
+                value: {{ required "GCS HMAC key required" .Values.db.backups.gcs.hmac.key }}
+              - name: APP_GOOG_SECRET
+                value: {{ required "GCS HMAC secret required" .Values.db.backups.gcs.hmac.secret }}
+              - name: APP_GOOG_BUCKET
+                value: {{ required "GCS bucket required" .Values.db.backups.gcs.bucket }}
+              # DB connection
+              {{ include "dbEnvs" . | indent 14 }}
+              resources:
+                {{- toYaml .Values.db.backups.gcs.resources | nindent 16 }}
+          restartPolicy: OnFailure
+{{ end }}

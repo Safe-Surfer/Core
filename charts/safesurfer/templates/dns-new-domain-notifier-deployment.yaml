@@ -1,0 +1,140 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.newDomainNotifier.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+data:
+  domain-add-config.json: |-
+    {{- include "newDomainNotifierAddConfig" . | fromYaml | toJson | nindent 4 }}
+  {{- if .Values.dns.newDomainNotifier.addConfig.crawling.enabled }}
+  crawl-config.json: |-
+    {{- include "newDomainNotifierCrawlConfig" . | fromYaml | toJson | nindent 4 }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  annotations:
+    checksum/secret: {{ include (print $.Template.BasePath "/dns-new-domain-notifier-categorizer-secret.yaml") . | sha256sum }}
+    checksum/domain-add-config: {{ include "newDomainNotifierAddConfig" . | sha256sum }}
+    {{- if .Values.dns.newDomainNotifier.addConfig.crawling.enabled }}
+    checksum/crawl-config: {{ include "newDomainNotifierCrawlConfig" . | sha256sum }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.dns.newDomainNotifier.replicas }}
+{{- if .Values.dns.newDomainNotifier.deploymentStrategy }}
+  strategy:
+{{- with .Values.dns.newDomainNotifier.deploymentStrategy }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-newDomainNotifier
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+        app: safesurfer-newDomainNotifier
+        {{- else }}
+        app: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+        {{- end }}
+        {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
+    {{- if .Values.dns.labels }}
+    {{- with .Values.dns.labels }}
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+        image: {{ .Values.dns.newDomainNotifier.image }}
+        securityContext:
+          {{- toYaml .Values.dns.newDomainNotifier.securityContext | nindent 12 }}
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: config
+          mountPath: /var/safesurfer/config
+        ports:
+          - name: tcp
+            containerPort: {{ .Values.dns.newDomainNotifier.bindPort }}
+            protocol: TCP
+          - name: udp
+            containerPort: {{ .Values.dns.newDomainNotifier.bindPort }}
+            protocol: UDP
+        env:
+          - name: TZ
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                key: timezone
+          - name: BIND_PORT
+            value: {{ .Values.dns.newDomainNotifier.bindPort | toString | quote }}
+          - name: APP_QUEUE
+            value: {{ .Values.dns.newDomainNotifier.addConfig.queue | quote }}
+          - name: APP_DO_CRAWL
+            value: {{ .Values.dns.newDomainNotifier.addConfig.crawling.enabled | quote }}
+          - name: APP_DOMAINS_ADD_CONFIG_FILENAME
+            value: /var/safesurfer/config/domain-add-config.json
+          {{- if .Values.dns.newDomainNotifier.addConfig.crawling.enabled }}
+          - name: APP_CRAWLER_CONF_FILENAME
+            value: /var/safesurfer/config/crawl-config.json
+          {{- end }}
+          - name: CATEGORIZER_URL
+            value: "https://{{ .Values.categorizer.adminApp.ingress.host }}/api/domains/add-jobs?from-strings=false"
+          - name: CATEGORIZER_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}-categorizer
+                key: categorizer-access-key
+          - name: CATEGORIZER_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}-categorizer
+                key: categorizer-user
+          {{- with .Values.dns.newDomainNotifier.extraEnv }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+        resources:
+          {{- toYaml .Values.dns.newDomainNotifier.resources | nindent 12 }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.dns.newDomainNotifier.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- end }}

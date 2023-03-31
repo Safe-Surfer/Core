@@ -1,0 +1,108 @@
+{{- if .Values.categorizer.autoCat.classifier.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+{{- include "storageProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.categorizer.autoCat.classifier.crawlerStorage.provider "targetNamespace" .Values.categorizer.namespace) }}
+---
+{{- include "storageProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.categorizer.autoCat.classifier.classifierStorage.provider "targetNamespace" .Values.categorizer.namespace) }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  replicas: {{ .Values.categorizer.autoCat.classifier.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      volumes:
+      - name: crawler-storage
+        secret:
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.categorizer.autoCat.classifier.crawlerStorage.provider)) }}
+      - name: classifier-storage
+        secret:
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.categorizer.autoCat.classifier.classifierStorage.provider)) }}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+        image: {{ .Values.categorizer.autoCat.classifier.image }}
+        volumeMounts:
+        - name: crawler-storage
+          mountPath: /var/safesurfer/secrets/crawler/
+        - name: classifier-storage
+          mountPath: /var/safesurfer/secrets/classifier/
+        env:
+        - name: APP_I_WANT_STORAGE_CRAWLER_CONF_FILE
+          value: /var/safesurfer/secrets/crawler/storage-{{ .Values.categorizer.autoCat.classifier.crawlerStorage.provider }}.yaml
+        - name: APP_I_WANT_STORAGE_CLASSIFIER_CONF_FILE
+          value: /var/safesurfer/secrets/classifier/storage-{{ .Values.categorizer.autoCat.classifier.classifierStorage.provider }}.yaml
+        - name: APP_MAX_TILE_SCALE
+          value: {{ .Values.categorizer.autoCat.classifier.imageTiling.maxTileScale | quote }}
+        - name: APP_MIN_TILE_SCALE
+          value: {{ .Values.categorizer.autoCat.classifier.imageTiling.minTileScale | quote }}
+        - name: APP_EXTRA_TILES
+          value: {{ .Values.categorizer.autoCat.classifier.imageTiling.extraTiles | quote }}
+        - name: APP_TILE_SCALE_STEPS
+          value: {{ .Values.categorizer.autoCat.classifier.imageTiling.scaleSteps | quote }}
+        - name: APP_CHECK_CSAM
+          value: {{ .Values.categorizer.autoCat.classifier.csamChecker.enabled | quote }}
+        - name: APP_ADULT_CATEGORY_ID
+          value: {{ .Values.categorizer.autoCat.classifier.adultCategoryID | quote }}
+        - name: APP_MODEL_OUTPUT_SENSITIVITIES
+          value: {{ .Values.categorizer.autoCat.classifier.sensitivity | toJson | quote }}
+        # https://github.com/h2non/bimg/issues/282#issuecomment-556014222
+        - name: MALLOC_ARENA_MAX
+          value: '2'
+        {{- if .Values.categorizer.autoCat.classifier.csamChecker.enabled }}
+        - name: APP_CSAM_CATEGORY_ID
+          value: {{ .Values.categorizer.autoCat.classifier.csamChecker.categoryID | quote }}
+        - name: APP_ARACHNID_API_KEY
+          value: {{ .Values.categorizer.autoCat.classifier.csamChecker.apiKey }}
+        {{- end }}
+        {{ include "redisEnvs" (dict "Values" .Values "Release" .Release "required" true) | indent 8 }}
+        resources:
+          {{- toYaml .Values.categorizer.autoCat.classifier.resources | nindent 10 }}
+---
+{{- if .Values.categorizer.autoCat.classifier.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  minReplicas: {{ .Values.categorizer.autoCat.classifier.hpa.minReplicas }}
+  maxReplicas: {{ .Values.categorizer.autoCat.classifier.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.categorizer.autoCat.classifier.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.categorizer.autoCat.classifier.hpa.targetAverageCPUUtilization }}
+{{- end }}
+{{- end }}

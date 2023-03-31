@@ -1,0 +1,51 @@
+#
+# Create a service account to enable a one-off job that runs each time we apply the chart. The job
+# creates a copy of the database auth and injects into a specified namespace. Individual subcharts
+# should use the _db-auth-injector-job template to actually create the job.
+#
+{{ if .Values.db.inCluster.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+# Role to allow a job to create/get secrets in all namespaces, as well as deleting this job once done.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+ name: db-auth-injector-role
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - create
+  - delete
+  - patch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - delete
+---
+# Service account for the db auth injector
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: db-auth-injector-sa
+---
+# Role binding for the db auth injector
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: db-auth-injector-role-binding
+roleRef:
+  kind: ClusterRole
+  name: db-auth-injector-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: db-auth-injector-sa
+  namespace: default
+{{ end }}
+{{ end }}

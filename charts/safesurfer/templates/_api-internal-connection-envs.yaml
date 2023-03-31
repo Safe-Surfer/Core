@@ -1,0 +1,6 @@
+{{- define "apiInternalConnection" }}
+- name: APP_SSAPI_INTERNAL_ADMIN_SECRET
+  value: {{ required "API internal admin secret required" .Values.api.adminSecret }}
+- name: APP_SSAPI_INTERNAL_ADMIN_HOST
+  value: {{ include "name" (dict "Release" .Release "name" `api` .nameOverride .Values.api.nameOverride) }}-admin-internal.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc.cluster.local
+{{- end }}

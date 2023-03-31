@@ -1,0 +1,11 @@
+{{- define "customCert" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .name }}-cert
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .namespace) }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ required "tls cert required" .cert.custom.cert | b64enc | quote }}
+  tls.key: {{ required "tls key required" .cert.custom.key | b64enc | quote }}
+{{- end }}

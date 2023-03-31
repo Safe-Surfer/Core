@@ -1,0 +1,18 @@
+{{- define "redisEnvs" }}
+{{- if and .Values.redis.enabled .Values.redis.internal.enabled }}
+- name: APP_REDIS_CONNSTRING
+  value: redis://{{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}-svc.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.redis.namespace) }}.svc.cluster.local:6379/0?pool_size=1000
+{{- else if and .Values.redis.enabled .Values.redis.external.enabled }}
+- name: APP_REDIS_CONNSTRING
+  valueFrom:
+    secretKeyRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: redis-url
+      {{- else }}
+      name: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}-url
+      {{- end }}
+      key: url
+{{- else if .required }}
+{{- fail "redis must be configured" }}
+{{- end }}
+{{- end }}

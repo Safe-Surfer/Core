@@ -1,0 +1,31 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.newDomainNotifier.enabled }}
+{{- if .Values.dns.newDomainNotifier.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  namespace:  {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+spec:
+  minReplicas: {{ .Values.dns.newDomainNotifier.hpa.minReplicas }}
+  maxReplicas: {{ .Values.dns.newDomainNotifier.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.dns.newDomainNotifier.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.dns.newDomainNotifier.hpa.targetAverageCPUUtilization }}
+{{- end }}
+{{- end }}
+{{- end }}

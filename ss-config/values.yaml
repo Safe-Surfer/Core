@@ -1,0 +1,275 @@
+imagePullSecret:
+  username:
+  password:
+
+db:
+  external:
+    pguser:
+    pgpassword:
+    pghost:
+    pgdb:
+    pgsslmode:
+
+dns:
+  timezone: "Pacific/Auckland"
+  blockHostOverride:
+  dns:
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.15.4
+    bindPort: 53
+    localAddress: 0.0.0.0
+    threads: 4
+    distributorThreads: 8
+    allowFrom: 0.0.0.0/0,::/0
+    logLevel: 9
+    blockFirefoxDOH: true
+    debugging:
+      ## A domain that, if queried for TXT records, will return details of the current account.
+      accountQueryDomain:
+      ## A domain that, if queried for TXT records, will return the current DNS protocol.
+      protoQueryDomain:
+      ## A domain that is treated like a TLD - if a domain is prepended and the resulting domain
+      ## queried for a TXT record, the DNS will return the current configuration of that domain.
+      ## e.g. ` dig -t TXT youtube.com.domain.safesurfer ` if "domain.safesurfer" if used.
+      domainLookupDomain:
+      ## A domain for checking what action will occur if the domain is queried. It's a TLD,
+      ## used like domainLookupDomain.
+      explainDomain:
+    ## Configure how much to log for anonymous requests, e.g. where we can't recognize
+    ## an account.
+    anonymousLogging:
+      ## Log categories and IPs of anonymous requests.
+      enabled: false
+      ## Log domains for anonymous accounts as well.
+      fullHistoryEnabled: false
+    healthCheck:
+      ## The domain to look up as a test.
+      testDomain: google.com
+      ## How many seconds to wait for the domain to resolve
+      testTimeout: 4
+    sidecarContainers:
+      lmdbManager:
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+      healthCheck:
+        enabled: false
+        image: registry.gitlab.com/safesurfer/core/apps/status:1.0.0
+        bindPort: 8080
+        httpSecret:
+          enabled: false
+          secret:
+        useFallbackRoute: false
+        customTargets:
+    initContainers:
+      initLmdb:
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+      iptablesProvisioner:
+        enabled: true
+        image: registry.gitlab.com/safesurfer/core/dns/iptables-provisioner:1.0.2
+        ifcName: eth0
+  doh:
+    enabled: false
+    bindPort: 443
+    host:
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    tls:
+      custom:
+        cert:
+        key:
+    # Comment out to disable cert sync
+    certSync:
+      # Hostname to grab the public SSL cert from
+      endpoint:
+      # In systemd calendar timer format
+      schedule: '*-*-* 4:00:00'
+    logLevel: info
+    retries: 3
+    tcpConns: 1
+    tcpTimeout: 1m
+    tcpReuseTimeout: 1m
+
+  dot:
+    enabled: false
+    bindPort: 853
+    host:
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    tls:
+      custom:
+        cert:
+        key:
+    # Comment out to disable cert sync
+    certSync:
+      # Hostname to grab the public SSL cert from
+      endpoint:
+      # In systemd calendar timer format
+      schedule: '*-*-* 4:00:00'
+    logLevel: info
+    maxIdleKeepalive: 60s
+    writeTimeout: 10s
+    retries: 3
+    tcpConns: 1
+    tcpTimeout: 1m
+    tcpReuseTimeout: 1m
+
+  newDomainNotifier:
+    enabled: false
+    ## Port for the pod to bind to.
+    bindPort: 6000
+    ## Access details for the categorizer so new domains can be added. This should have an access level
+    ## of at least 1. If the access level is 1, new domains can only be queued. With an access level of 2
+    ## or above, you may add all domains seen, although this isn't recommended as you can overwhelm your
+    ## database if you have a lot of DNS traffic.
+    ## The key must be added manually in the categorizer after deployment. If the access details
+    ## are wrong, the process will harmlessly fail.
+    ## The value of .categorizer.adminApp.ingress.host is used as the categorizer URL.
+    categorizer:
+      ## Specify on CLI
+      user:
+      key:
+    ## Container image for new domain notifier
+    image: registry.gitlab.com/safesurfer/core/apps/new-domain-notifier:5.18.0
+    ## Specify how to add domains.
+    addConfig:
+      ## If true, add new domains to a queue rather than putting them into the database immediately.
+      ## Requires .categorizer.autoCat.addFromDNS to be enabled in the deployment containing the
+      ## categorizer that we are connected to (categorizer.adminApp.ingress.host).
+      ## See categorizer.autoCat.addFromDNS for configuration around how to add domains from the queue.
+      queue: true
+      ## Configure how domains should be added.
+      domainAddConfig:
+        ## The max amount of time to wait for domains to be added to the database.
+        ## Does not include the time for crawling the domains below.
+        timeout: 1m
+        ## Domains are added in batches. If the below is true, the domains are added in a transaction
+        ## that aborts if one of the domains is invalid.
+        haltOnInvalid: false
+        ## If true, don't send a NOTIFY to the DNS to load new domains after their categories have been
+        ## updated. Filtering will be updated at a later time. Can be used to reduce DB load if many
+        ## domains are being added, but may result in domains being added more than once.
+        deferUpdate: false
+        ## Whether to strip the initial "www." from domains. This is recommended as it allows the
+        ## resulting categorization to apply to the whole domain.
+        stripWWW: true
+        ## Whether to allow domains with reserved top-level domains. Not recommended.
+        allowReserved: false
+        ## The timeout period after a failed crawl of a particular domain. It will not be crawled
+        ## again for at least this long since failure. Irrelevant if crawling is not enabled.
+        ## Parsed as a go duration, https://pkg.go.dev/time#ParseDuration.
+        minDurationSinceFailedCrawl: 48h
+      ## Configure how to crawl new domains, if at all.
+      crawling:
+        enabled: false
+        config:
+          ## The minimum amount of time to wait for pages to load, on top of waiting for the page
+          ## to load normally.
+          minPageWait: 10s
+          ## The maximum amount of time to wait for pages to load, including minPageWait and the
+          ## time for pages to load normally. If the document is not ready by this time, analysis
+          ## is started anyway.
+          maxPageWait: 30s
+          ## The amount of pages to look at.
+          maxPages: 5
+          ## The max amount of characters to store from each page.
+          maxTextLen: 5000
+          ## The max amount of images to look at from each page.
+          maxImgs: 50
+          ## The max amount of links to add from each page.
+          maxLinks: 200
+          ## Whether to detect the language of the first page.
+          detectLanguage: false
+          ## If detectLanguage is true, whether to translate the page to the homeLanguage
+          ## using the crawler's translation config. If this is false but detectLanguage is true,
+          ## the crawl will be aborted if the language doesn't match the homeLanguage.
+          translate: false
+          ## The language to translate to or require, if detectLanguage is true.
+          homeLanguage: en
+          ## Whether to find extra images to analyze. Includes a full-page screenshot, and detects
+          ## CSS backgrounds and canvases.
+          findExtraImages: true
+          ## The max amount of extra images to find.
+          maxExtraImages: 100
+          ## If true, don't update any categories or make suggestions, just produce the data of the
+          ## pages.
+          inspectOnly: false
+          ## If true, only make suggestions, never update directly, regardless of the category-level settings.
+          suggestionsOnly: false
+          ## The max duration to wait for the whole crawl to complete. Results in a timeout error if exceeded.
+          maxDuration: 20m
+
+  ## Configure logging to clickhouse, if clickhouse is configured below. The DNS does not connect to clickhouse
+  ## directly, instead it sends usage data as UDP packets to clickhoused. Clickhoused aggregates the usage data
+  ## in batches and forwards to clickhouse itself once the right conditions are met.
+  clickhoused:
+    external:
+      enabled: false
+      ## UDP Connection params
+      host:
+      port:
+    internal:
+      enabled: false
+      image: registry.gitlab.com/safesurfer/core/apps/clickhoused:1.0.1
+      logLevel: info
+      frontend:
+        udp:
+          maxBatchWait: 10s
+          maxBatchSize: 50000
+          bindPort: 9001
+      backend:
+        clickhouse:
+          enabled: true
+          timeout: 8s
+        http:
+          enabled: false
+          secret:
+          timeout: 8s
+          baseURL:
+    
+  ipsetd:
+    ## Connect to a UDP frontend of ipsetd hosted somewhere else. Note that this connection is not secure,
+    ## it should be within the same network.
+    external:
+      enabled: false
+      host:
+      port:
+    internal:
+      enabled: false
+      image: registry.gitlab.com/safesurfer/core/apps/ipsetd:1.0.1
+      frontend:
+        udp:
+          maxBatchWait: 10s
+          maxBatchSize: 50000
+          bindPort: 9002
+      backend:
+        http:
+          secret:
+          timeout: 8s
+          baseURL:
+
+clickhouse:
+  external:
+    enabled: false
+    connection:
+      ## Whether to use TLS
+      secure: 'false'
+      host:
+      port:
+      database:
+      ## Specify on CLI
+      username:
+      password:
+
+blockpage:
+  domain:
+
+categorizer:
+  adminApp:
+    ingress:
+      host:
+
+protocolchecker:
+  domains:
+    base:
+    active: active
+    plain: plain
+    dnscrypt: dnscrypt
+    doh: doh
+    dot: dot
+    router: router

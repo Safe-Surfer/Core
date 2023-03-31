@@ -1,0 +1,245 @@
+{{ if .Values.protocolchecker.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# Namespace
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: protocol-checker
+{{- end }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+#
+# Cert and cluster issuer
+#
+{{ include "cert" (dict "cert" .Values.protocolchecker.tls "noHttpSupport" true "Release" .Release "name" (include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride)) "namespace" "protocol-checker" "dnsNames" (list (printf "*.%s" .Values.protocolchecker.domains.base)) "Values" .Values) }}
+---
+#
+# Deployment
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+spec:
+  replicas: {{ .Values.protocolchecker.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+        image: {{ .Values.protocolchecker.image }}
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 20
+        resources:
+          {{- toYaml .Values.protocolchecker.resources | nindent 10 }}
+        ports:
+          - containerPort: 8080
+---
+#
+# HPA, if configured.
+#
+{{ if .Values.protocolchecker.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+spec:
+  maxReplicas: {{ .Values.protocolchecker.hpa.maxReplicas }}
+  minReplicas: {{ .Values.protocolchecker.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.protocolchecker.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.protocolchecker.hpa.targetAverageCPUUtilization }}
+{{ end }}
+---
+#
+# Service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+---
+#
+# Ingress for all domains
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-ingress
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: {{ .Values.protocolchecker.ingressClass }}
+  tls:
+  # Multi-TLS for each proto host
+  - hosts:
+      - {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  - hosts:
+      - {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  - hosts:
+      - {{ .Values.protocolchecker.domains.dnscrypt }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  - hosts:
+      - {{ .Values.protocolchecker.domains.doh }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  - hosts:
+      - {{ .Values.protocolchecker.domains.dot }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  - hosts:
+      - {{ .Values.protocolchecker.domains.router }}.{{ .Values.protocolchecker.domains.base }}
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  # Route each host to the same backend service
+  - host: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: {{ .Values.protocolchecker.domains.dnscrypt }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: {{ .Values.protocolchecker.domains.doh }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: {{ .Values.protocolchecker.domains.dot }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: {{ .Values.protocolchecker.domains.router }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+{{ end }}

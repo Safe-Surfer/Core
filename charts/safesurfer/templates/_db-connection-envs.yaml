@@ -1,0 +1,58 @@
+{{- define "dbEnvs" }}
+#
+# Behavior if we're using an internal DB
+#
+{{ if .Values.db.inCluster.enabled }}
+{{- if .Values.testFlags.legacyNames }}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: db-login
+      key: username
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: db-login
+      key: password
+{{- else }}
+- name: PGUSER
+  value: {{ .Values.db.inCluster.pguser }}
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.db.inCluster.pguser }}.{{ .Values.db.inCluster.name }}.credentials.postgresql.acid.zalan.do
+      key: password
+{{- end }}
+- name: PGHOST
+  value: {{ .Values.db.inCluster.name }}-pooler.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}.svc.cluster.local
+- name: PGDB
+  value: {{ .Values.db.inCluster.pgdb }}
+- name: PGSSLMODE
+  value: 'require'
+- name: PGPORT
+  value: '5432'
+{{ end }}
+#
+# Behavior if we're using an external DB
+#
+{{ if .Values.db.external.enabled }}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "name" (dict "Release" .Release "name" `db` .nameOverride .Values.db.inCluster.nameOverride) }}-login
+      key: username
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "name" (dict "Release" .Release "name" `db` .nameOverride .Values.db.inCluster.nameOverride) }}-login
+      key: password
+- name: PGHOST
+  value: {{ .Values.db.external.pghost | quote }}
+- name: PGDB
+  value: {{ .Values.db.external.pgdb | quote }}
+- name: PGSSLMODE
+  value: {{ .Values.db.external.pgsslmode | quote}}
+- name: PGPORT
+  value: '5432'
+{{ end }}
+{{- end }}

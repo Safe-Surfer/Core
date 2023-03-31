@@ -1,0 +1,19 @@
+{{- if .Values.alphasoc.enabled }}
+{{- if .Values.alphasoc.internal.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+data:
+  ae.yaml: |-
+    api:
+      keyfile: /ae-secrets/key
+    server:
+      bind: 0.0.0.0:{{ .Values.alphasoc.internal.bindPort }}
+    datadir: /data
+    database:
+      retention:
+        alerts: {{ .Values.alphasoc.internal.alertsRetentionDuration }}
+{{- end }}
+{{- end }}

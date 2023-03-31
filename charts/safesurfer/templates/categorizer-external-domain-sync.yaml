@@ -1,0 +1,51 @@
+{{- if .Values.categorizer.adminApp.enabled }}
+{{- if .Values.categorizer.externalDomainSync.enabled }}
+---
+#
+# Define the cronjob.
+#
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  schedule: {{ .Values.categorizer.externalDomainSync.schedule }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            job: {{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}
+        spec:
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+          automountServiceAccountToken: false
+          containers:
+          - name: {{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}
+            image: {{ .Values.categorizer.externalDomainSync.image }}
+            resources:
+              {{- toYaml .Values.categorizer.externalDomainSync.resources | nindent 14 }}
+            env:
+            - name: APP_TIMEOUT
+              value: {{ .Values.categorizer.externalDomainSync.timeouts.main }}
+            - name: APP_SOURCE_TIMEOUT
+              value: {{ .Values.categorizer.externalDomainSync.timeouts.perSource }}
+            - name: APP_BATCH_TIMEOUT
+              value: {{ .Values.categorizer.externalDomainSync.timeouts.perBatch }}
+            - name: APP_BATCH_SIZE
+              value: {{ .Values.categorizer.externalDomainSync.batchSize | quote }}
+            - name: APP_CATEGORIZER_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}.svc.cluster.local:{{ .Values.categorizer.adminApp.svcPort }}
+            - name: APP_CATEGORIZER_USERNAME
+              value: 'External-List'
+            - name: APP_CATEGORIZER_PASSWORD
+              value: {{ required "Need a categorizer password" .Values.categorizer.externalDomainSync.login.accessKey }}
+          restartPolicy: Never
+{{- end }}
+{{- end }}

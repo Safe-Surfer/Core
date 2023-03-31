@@ -1,0 +1,3 @@
+{{- define "imagePullSecret" }}
+{{- printf "{\"auths\":{\"%s\":{\"username\":\"%s\",\"password\":\"%s\",\"email\":\"%s\",\"auth\":\"%s\"}}}" (default .registry `registry.gitlab.com`) (required "Image pull secret username required" .username) (required "Image pull secret password required" .password) .email (printf "%s:%s" (required "Image pull secret username required" .username) (required "Image pull secret password required" .password) | b64enc) | b64enc }}
+{{- end }}

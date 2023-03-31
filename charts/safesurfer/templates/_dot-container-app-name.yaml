@@ -1,0 +1,1 @@
+{{- define "dotContainerAndAppName" }}{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}safesurfer-dot{{- else }}{{- include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}{{- end }}{{- end }}

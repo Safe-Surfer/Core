@@ -1,0 +1,16 @@
+{{- define "ipinfoProviderObject" }}
+{{- with index .Values.providers.ipinfo .key }}
+{{- with .cacheSize }}
+cacheSize: {{ . }}
+{{- end }}
+{{- if eq .platform "ipstack" }}
+ipstack:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "ipinfoIo" }}
+ipinfoIo:
+{{- .secret | nindent 2 }}
+{{- else }}
+{{- fail "that ipinfo platform is not supported" }}
+{{- end }}
+{{- end }}
+{{- end }}

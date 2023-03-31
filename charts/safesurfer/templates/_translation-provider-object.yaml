@@ -1,0 +1,11 @@
+{{- define "translationProviderObject" }}
+{{- with index .Values.providers.translation .key }}
+maxLen: {{ .maxLen }}
+{{- if eq .platform "gcp" }}
+gcp:
+{{- .secret | nindent 2 }}
+{{- else }}
+{{- fail "that translation platform is not supported" }}
+{{- end }}
+{{- end }}
+{{- end }}

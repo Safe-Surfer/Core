@@ -1,0 +1,50 @@
+{{ if and .Values.api.enabled .Values.api.alerts.mailbot.enabled }}
+---
+#
+# Define the cronjob.
+#
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "mailbot" "nameOverride" .Values.api.alerts.mailbot.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  # Run 1 minute past every hour
+  schedule: "1 */1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # Use the resources created by the API for most things
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+          - name: {{ include "name" (dict "Release" .Release "name" "mailbot" "nameOverride" .Values.api.alerts.mailbot.nameOverride) }}
+            image: {{ .Values.api.alerts.mailbot.image }}
+            resources:
+              {{- toYaml .Values.api.alerts.mailbot.resources | nindent 14 }}
+            env:
+            # Include DB connection
+            {{ include "dbEnvs" . | indent 12 }}
+            {{ include "emailEnvs" . | indent 12 }}
+            {{ include "loggingEnvs" (dict "level" .Values.api.alerts.mailbot.logLevel) | indent 12 }}
+            {{ include "apiInternalConnection" . | indent 12 }}
+            - name: SAFESURFER_SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-sendgrid-secret
+                  key: secret
+            # Sending emails
+            - name: EMAIL_OUR_NAME
+              value: {{ .Values.api.sendgrid.senderName }}
+            - name: EMAIL_OUR_ADDRESS
+              value: {{ .Values.api.sendgrid.senderAddress }}
+            - name: FRONTEND_BASE_URL
+              value: https://{{ .Values.frontend.ingress.host }}
+{{ end }}

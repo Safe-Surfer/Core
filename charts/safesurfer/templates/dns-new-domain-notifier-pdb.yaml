@@ -1,0 +1,32 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.newDomainNotifier.enabled }}
+{{- if .Values.dns.newDomainNotifier.podDisruptionBudget.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minAvailable: {{ .Values.dns.newDomainNotifier.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-newDomainNotifier
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

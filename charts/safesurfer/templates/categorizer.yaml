@@ -1,0 +1,417 @@
+{{ if .Values.categorizer.adminApp.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-sa
+ namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+ name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-role
+ namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - list
+- apiGroups:
+  - batch
+  - extensions
+  resources:
+  - cronjobs
+  verbs:
+  - get
+- apiGroups:
+  - batch
+  - extensions
+  resources:
+  - jobs
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-role-binding
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+roleRef:
+  kind: Role
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-sa
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for DB connection.
+#
+{{ include "dbSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.categorizer.namespace) }}
+---
+{{- if or .Values.clickhouse.internal.enabled .Values.clickhouse.external.enabled }}
+#
+# Secret for clickhouse connection
+#
+{{ include "clickhouseSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.categorizer.namespace) }}
+{{- end }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# The storage secret, if any.
+#
+{{- if .Values.categorizer.adminApp.storage.enabled }}
+{{ include "storageProviderSecret" (dict "Release" .Release "key" .Values.categorizer.adminApp.storage.provider "targetNamespace" .Values.categorizer.namespace "Values" .Values) }}
+{{- end }}
+---
+#
+# The storage secret, if any.
+#
+{{- if .Values.categorizer.adminApp.crawlerStorage.enabled }}
+{{ include "storageProviderSecret" (dict "Release" .Release "key" .Values.categorizer.adminApp.crawlerStorage.provider "targetNamespace" .Values.categorizer.namespace "Values" .Values) }}
+{{- end }}
+{{- end }}
+{{- end }}
+---
+#
+# The categorizer deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  replicas: {{ .Values.categorizer.adminApp.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+      annotations:
+        # Ensure rolling deployments when mounted secrets change
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        {{- if .Values.categorizer.adminApp.storage.enabled }}
+        checksum/storage: {{ include "storageProviderObject" (dict "Values" .Values "Release" .Release "key" .Values.categorizer.adminApp.storage.provider) | sha256sum }}
+        {{- end }}
+        {{- if .Values.categorizer.adminApp.crawlerStorage.enabled }}
+        checksum/crawlerStorage: {{ include "storageProviderObject" (dict "Values" .Values "Release" .Release "key" .Values.categorizer.adminApp.crawlerStorage.provider) | sha256sum }}
+        {{- end }}
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+      # Volume for mounting GCP service account
+      volumes:
+      {{- if .Values.categorizer.adminApp.storage.enabled }}
+      - name: storage
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: storage-config-{{ .Values.categorizer.adminApp.storage.provider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.categorizer.adminApp.storage.provider)) }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.categorizer.adminApp.crawlerStorage.enabled }}
+      - name: crawler-storage
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: storage-config-{{ .Values.categorizer.adminApp.crawlerStorage.provider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.categorizer.adminApp.crawlerStorage.provider)) }}
+          {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-sa
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+        image: {{ .Values.categorizer.adminApp.image }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+          #
+          # DB Connection
+          #
+          {{ include "dbEnvs" . | indent 10 }}
+          {{- if or .Values.clickhouse.internal.enabled .Values.clickhouse.external.enabled }}
+          {{ include "clickhouseEnvs" . | indent 10 }}
+          {{- end }}
+          {{- if .Values.api.enabled }}
+          {{ include "apiInternalConnection" . | indent 10 }}
+          {{- end }}
+          {{ include "redisEnvs" (dict "Values" .Values "Release" .Release "required" true) | indent 10 }}
+
+          {{- if .Values.categorizer.adminApp.realIPHeader }}
+          - name: APP_REAL_IP_HEADER
+            value: {{ .Values.categorizer.adminApp.realIPHeader }}
+          {{- end }}
+          {{- if .Values.categorizer.adminApp.authIpWhitelist }}
+          - name: APP_AUTH_CIDR_WHITELIST
+            value: '{{ join "," .Values.categorizer.adminApp.authIpWhitelist }}'
+          {{- end }}
+
+          - name: APP_ALL_QUOTA_KEYS
+            value: '{{ join "," (keys .Values.api.quotas | uniq | sortAlpha) }}'
+
+          - name: APP_K8S_NAMESPACE
+            value: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+
+          - name: APP_DOMAIN_HISTORY_MAX_PER_REQUEST
+            value: {{ .Values.categorizer.adminApp.maxHistoryEntriesPerRequest | quote }}
+
+          - name: APP_CLICKHOUSE_READ_TIMEOUT
+            value: {{ .Values.categorizer.adminApp.clickhouse.readTimeout | quote }}
+
+          - name: API_URL
+            value: https://{{ .Values.api.ingress.host }}
+
+          # Port to run on so service can communicate
+          - name: APP_PORT
+            value: {{ .Values.categorizer.adminApp.port | quote }}
+          - name: APP_HEALTH_PORT
+            value: "0.0.0.0:8082"
+
+          # How much to blur images when proxying
+          - name: IMAGE_BLUR
+            value: {{ .Values.categorizer.adminApp.imageProxy.imageBlur | quote }}
+          # JPEG quality for proxied images
+          - name: IMAGE_QUALITY
+            value: {{ .Values.categorizer.adminApp.imageProxy.imageQuality | quote }}
+
+          # Public endpoint rate limits
+          - name: RATE_LIMIT_GET_DOMAIN_CATEGORIES
+            value: {{ .Values.categorizer.adminApp.rateLimiting.publicGetDomain | quote }}
+
+          # Whether to enable auto-categorization
+          - name: ENABLE_AUTOCATEGORIZATION
+            value: {{ .Values.categorizer.autoCat.enabled | ternary "true" "false" | quote }}
+          - name: APP_CRAWLER_MAX_QUEUED
+            value: {{ .Values.categorizer.autoCat.maxQueued | quote }}
+          - name: APP_MODEL_TRAINING_INIT_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.training.initTimeout }}
+          - name: APP_MODEL_TRAINING_TRAIN_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.training.trainTimeout }}
+          - name: APP_CRAWLER_HOOK_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.training.iterationTimeout }}
+          - name: APP_CLASSIFICATIONS_MAX_QUEUED
+            value: {{ .Values.categorizer.autoCat.classifications.maxQueued | quote }}
+          - name: APP_CLASSIFICATIONS_HOOK_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.classifications.addTimeout }}
+
+          #
+          # Config for web crawling jobs. Jobs are scheduled through the k8s API.
+          #
+          {{- if .Values.categorizer.adminApp.storage.enabled }}
+          - name: APP_I_WANT_STORAGE_CONF_FILE
+            value: /var/safesurfer/secrets/storage/storage-{{ .Values.categorizer.adminApp.storage.provider }}.yaml
+          {{- end }}
+          {{- if .Values.categorizer.adminApp.crawlerStorage.enabled }}
+          - name: APP_I_WANT_STORAGE_CRAWLER_CONF_FILE
+            value: /var/safesurfer/secrets/crawler-storage/storage-{{ .Values.categorizer.adminApp.crawlerStorage.provider }}.yaml
+          {{- end }}
+
+          # Location of the new domain queue
+          - name: NEW_DOMAIN_QUEUE_URL
+            value: http://{{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}.svc.cluster.local:{{ .Values.categorizer.autoCat.addFromDNS.svcPort }}
+
+          - name: APP_DOMAIN_MIRROR_SYNC_NAME
+            value: {{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}
+          - name: APP_EXTERNAL_DOMAIN_SYNC_NAME
+            value: {{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}
+          - name: APP_IP_MIRROR_SYNC_NAME
+            value: {{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}
+
+          # Provisioned accounts
+          - name: ACCESS_KEY_FOR_{{ required "Categorizer admin account required" .Values.categorizer.adminApp.admin.username | upper }}
+            value: {{ .Values.categorizer.adminApp.admin.password }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer admin account required" .Values.categorizer.adminApp.admin.username | upper }}
+            value: '3'
+
+          - name: ACCESS_KEY_FOR_EXTERNAL-LIST
+            value: {{ .Values.categorizer.externalDomainSync.login.accessKey }}
+          - name: ACCESS_KEY_LEVEL_FOR_EXTERNAL-LIST
+            value: '2'
+
+          {{- if .Values.categorizer.adminApp.newDomainNotifierUser.enabled }}
+          - name: ACCESS_KEY_FOR_{{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.user | upper }}
+            value: {{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.accessKey }}
+          {{- if .Values.categorizer.adminApp.newDomainNotifierUser.queueOnly }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.user | upper }}
+            value: '1'
+          {{- else }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.user | upper }}
+            value: '2'
+          {{- end }}
+          {{- end }}
+
+          {{ if and .Values.categorizer.autoCat.enabled .Values.categorizer.autoCat.addFromDNS.enabled }}
+          - name: ACCESS_KEY_FOR_{{ required "Categorizer account for new domain queue required" .Values.categorizer.autoCat.addFromDNS.categorizerUsername | upper }}
+            value: {{ .Values.categorizer.autoCat.addFromDNS.categorizerAccessKey }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer account for new domain queue required" .Values.categorizer.autoCat.addFromDNS.categorizerUsername | upper }}
+            value: '2'
+          {{ end }}
+
+          {{ if .Values.categorizer.mirroring.enabled }}
+          - name: ACCESS_KEY_FOR_{{ required "Categorizer account for domain mirror sync required" .Values.categorizer.mirroring.login.username | upper }}
+            value: {{ .Values.categorizer.mirroring.login.accessKey }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer account for domain mirror sync required" .Values.categorizer.mirroring.login.username | upper }}
+            value: '3'
+          {{ end }}
+
+          {{ if .Values.categorizer.ipMirroring.enabled }}
+          - name: ACCESS_KEY_FOR_{{ required "Categorizer account for ip mirror sync required" .Values.categorizer.ipMirroring.login.username | upper }}
+            value: {{ .Values.categorizer.ipMirroring.login.accessKey }}
+          - name: ACCESS_KEY_LEVEL_FOR_{{ required "Categorizer account for ip mirror sync required" .Values.categorizer.ipMirroring.login.username | upper }}
+            value: '3'
+          {{ end }}
+
+          {{- if and .Values.dns.newDomainNotifier.categorizer.key .Values.dns.newDomainNotifier.categorizer.user }}
+          - name: ACCESS_KEY_FOR_{{ .Values.dns.newDomainNotifier.categorizer.user | upper }}
+            value: {{ .Values.dns.newDomainNotifier.categorizer.key }}
+          {{- end }}
+
+        # Mount the service account token as a file
+        volumeMounts:
+        {{- if .Values.categorizer.adminApp.storage.enabled }}
+        - name: storage
+          mountPath: /var/safesurfer/secrets/storage
+        {{- end }}
+        {{- if .Values.categorizer.adminApp.crawlerStorage.enabled }}
+        - name: crawler-storage
+          mountPath: /var/safesurfer/secrets/crawler-storage
+        {{- end }}
+        ports:
+          - containerPort: {{ .Values.categorizer.adminApp.port }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.categorizer.adminApp.port }}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 1
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.categorizer.adminApp.resources | nindent 10 }}
+---
+{{ if .Values.categorizer.adminApp.hpa.enabled }}
+#
+# Horizontal pod autoscaler.
+#
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  maxReplicas: {{ .Values.categorizer.adminApp.hpa.maxReplicas }}
+  minReplicas: {{ .Values.categorizer.adminApp.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.categorizer.adminApp.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.categorizer.adminApp.hpa.targetAverageCPUUtilization }}
+{{ end }}
+---
+#
+# Service for the deployment.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+  annotations:
+    {{- with .Values.categorizer.adminApp.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: {{ .Values.categorizer.adminApp.svcPort }}
+    targetPort: {{ .Values.categorizer.adminApp.port }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+---
+{{ if .Values.categorizer.adminApp.ingress.enabled }}
+#
+# Ingress
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    {{ if .Values.categorizer.adminApp.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.categorizer.adminApp.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.categorizer.adminApp.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.categorizer.adminApp.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.categorizer.adminApp.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.categorizer.adminApp.ingress.host }}
+    {{- if .Values.categorizer.adminApp.ingress.tls.secretName }}
+    secretName: {{ .Values.categorizer.adminApp.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.categorizer.adminApp.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+            port:
+              number: {{ .Values.categorizer.adminApp.svcPort }}
+---
+#
+# Issuer and certificate.
+#
+{{ include "cert" (dict "cert" .Values.categorizer.adminApp.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride)) "namespace" .Values.categorizer.namespace "dnsNames" (list .Values.categorizer.adminApp.ingress.host) "Values" .Values) }}
+{{ end }}
+{{ end }}

@@ -1,0 +1,7 @@
+{{- define "ns" -}}
+{{- if not ((and .Values.testFlags .Values.testFlags.legacyNames)) }}
+{{- .Release.Namespace -}}
+{{- else -}}
+{{- .IndividualNamespace -}}
+{{- end -}}
+{{- end -}}

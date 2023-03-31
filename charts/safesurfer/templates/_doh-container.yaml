@@ -1,0 +1,106 @@
+{{- define "dohContainer" }}
+- name: {{ include "dohContainerAndAppName" . }}
+  image: {{ .Values.dns.doh.image }}
+  securityContext:
+    {{- toYaml .Values.dns.doh.securityContext | nindent 4 }}
+  imagePullPolicy: IfNotPresent
+  volumeMounts:
+  - name: doh-certs
+    mountPath: "/ssl"
+    readOnly: true
+  ports:
+    - name: doh
+      containerPort: {{ .Values.dns.doh.bindPort }}
+      protocol: TCP
+  env:
+    {{ include "loggingEnvs" (dict "level" .Values.dns.doh.logLevel) | indent 4 }}
+    - name: TZ
+      valueFrom:
+        configMapKeyRef:
+          name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+          key: timezone
+    {{- if .sidecar }}
+    - name: SS_DNS_SERVER
+      value: '127.0.0.1'
+    - name: APP_DNS_SERVER_PORT
+      value: {{ .Values.dns.dns.bindPort | quote }}
+    - name: APP_HEALTH_PORT
+      value: '8888'
+    {{- else }}
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    - name: SS_DNS_SERVER
+      value: {{ include "name" (dict "Release" .Release "name" "safesurfer-internal") }}
+    {{- else }}
+    - name: SS_DNS_SERVER
+      value: {{ include "name" (dict "Release" .Release "name" "dns-internal") }}
+    {{- end }}
+    - name: APP_DNS_SERVER_PORT
+      value: '53'
+    - name: APP_ENABLE_METRICS
+      value: '1'
+    - name: APP_HEALTH_PORT
+      value: '8080'
+    {{- end }}
+    - name: BASE_HOSTNAME
+      value: {{ .Values.dns.doh.host | toString | quote }}
+    - name: APP_PORT
+      value: {{ .Values.dns.doh.bindPort | toString | quote }}
+    - name: SS_PROTO_QUERY_DOMAIN
+      value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
+    - name: SS_PROTO_QUERY_DOH_DOMAIN
+      value: {{ .Values.protocolchecker.domains.doh }}.{{ .Values.protocolchecker.domains.base }}
+    - name: SS_PROTO_QUERY_ACTIVE_DOMAIN
+      value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
+    - name: CERT_FILE
+      value: /ssl/tls.crt
+    - name: KEY_FILE
+      value: /ssl/tls.key
+    - name: APP_MAX_TCP_CONNS
+      value: {{ .Values.dns.doh.tcpConns | quote }}
+    - name: APP_MAX_ATTEMPTS
+      value: {{ .Values.dns.doh.retries | quote }}
+    - name: APP_FRONTEND
+      value: doh
+    - name: APP_HEALTH_CHECK_HOSTNAME
+      value: {{ .Values.dns.dns.healthCheck.testDomain }}
+    - name: APP_TCP_TIMEOUT
+      value: {{ .Values.dns.doh.tcpTimeout }}
+    - name: APP_TCP_REUSE_TIMEOUT
+      value: {{ .Values.dns.doh.tcpReuseTimeout }}
+    - name: APP_SERVE_CERT_ONLY
+      value: {{ .Values.dns.doh.serveCertOnly | quote }}
+    {{- with .Values.dns.doh.extraEnv }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.dns.extraEnv }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      {{- if .sidecar }}
+      port: 8888
+      {{- else }}
+      port: 8080
+      {{- end }}
+  livenessProbe:
+    failureThreshold: 1
+    initialDelaySeconds: 1
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      {{- if .sidecar }}
+      port: 8888
+      {{- else }}
+      port: 8080
+      {{- end }}
+  resources:
+    {{- toYaml .Values.dns.doh.resources | nindent 4 }}
+{{- end }}

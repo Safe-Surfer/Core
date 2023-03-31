@@ -1,0 +1,21 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.dns.enabled }}
+{{- if .Values.dns.dns.podDisruptionBudget.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+spec:
+  minAvailable: {{ .Values.dns.dns.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "dnsContainerAndAppName" . }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

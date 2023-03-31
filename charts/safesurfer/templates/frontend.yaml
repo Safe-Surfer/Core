@@ -1,0 +1,226 @@
+{{ if .Values.frontend.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# Create the namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.frontend.namespace }}
+{{- end }}
+{{- if .Values.frontend.imagePullSecret }}
+---
+#
+# Create the image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-image-pull
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.frontend.imagePullSecret }}
+{{- end }}
+---
+#
+# Create the deployment.
+# 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+    spec:
+      {{- if .Values.frontend.imagePullSecret }}
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-image-pull
+      {{- end }}
+      automountServiceAccountToken: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+        image: {{ .Values.frontend.image }}
+        env:
+        - name: APP_ALLOWED_SCRIPT_SRCS
+          value: "https://{{ .Values.frontend.ingress.host }} {{ .Values.frontend.extraScriptSrc }}"
+        - name: APP_ALLOWED_WORKER_SRCS
+          value: "https://{{ .Values.frontend.ingress.host }} blob:"
+        {{- if .Values.frontend.apiHostOverride }}
+        - name: APP_API_URL
+          value: {{ .Values.frontend.apiHostOverride }}
+        {{- else }}
+        - name: APP_API_URL
+          value: https://{{ .Values.api.ingress.host }}
+        {{- end }}
+        {{- if .Values.frontend.adminAppHostOverride }}
+        - name: APP_CATEGORIZER_URL
+          value: {{ .Values.frontend.adminAppHostOverride }}
+        {{- else }}
+        - name: APP_CATEGORIZER_URL
+          value: https://{{ .Values.categorizer.adminApp.ingress.host }}
+        {{- end }}
+        - name: APP_DOT_HOST
+          value: {{ .Values.dns.dot.host }}
+        - name: APP_DOH_URL
+          value: https://{{ .Values.dns.doh.host }}/
+        - name: APP_CHARGEBEE_SITE
+          value: {{ .Values.api.accounts.chargebee.site }}
+        - name: APP_CHARGEBEE_DEFAULT_PLAN
+          value: {{ .Values.api.accounts.chargebee.defaultPlan }}
+        - name: APP_CHARGEBEE_DEFAULT_PERIOD
+          value: {{ .Values.api.accounts.chargebee.defaultPeriod }}
+        - name: APP_CHARGEBEE_DEFAULT_PRICE_ID
+          value: {{ .Values.api.accounts.chargebee.defaultPriceId }}
+        - name: APP_ROUTER_ROLE
+          value: {{ .Values.frontend.routerConfig.role }}
+        - name: APP_ROUTER_HOSTS
+          value: {{ .Values.frontend.routerConfig.allowedRedirectHostPrefixes | toJson | quote }}
+        - name: APP_ROUTER_HOST
+          value: {{ .Values.frontend.routerConfig.routerLink }}
+        - name: APP_PLAIN_PROTO_DOMAIN
+          value: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
+        - name: APP_DOH_PROTO_DOMAIN
+          value: {{ .Values.protocolchecker.domains.doh }}.{{ .Values.protocolchecker.domains.base }}
+        - name: APP_DOT_PROTO_DOMAIN
+          value: {{ .Values.protocolchecker.domains.dot }}.{{ .Values.protocolchecker.domains.base }}
+        - name: APP_DNSCRYPT_PROTO_DOMAIN
+          value: {{ .Values.protocolchecker.domains.dnscrypt }}.{{ .Values.protocolchecker.domains.base }}
+        - name: APP_ROUTER_PROTO_DOMAIN
+          value: {{ .Values.protocolchecker.domains.router }}.{{ .Values.protocolchecker.domains.base }}
+        - name: APP_PORT
+          value: ':{{ .Values.frontend.port }}'
+        - name: APP_HANDLE_GZIP
+          value: 'true'
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 101
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.frontend.port }}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.frontend.port }}
+          initialDelaySeconds: 1
+          periodSeconds: 20
+        resources:
+          {{- toYaml .Values.frontend.resources | nindent 10 }}
+        ports:
+          - containerPort: {{ .Values.frontend.port }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+#
+# Create the HPA if desired.
+#
+{{ if .Values.frontend.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+spec:
+  maxReplicas: {{ .Values.frontend.hpa.maxReplicas }}
+  minReplicas: {{ .Values.frontend.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.frontend.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.frontend.hpa.targetAverageCPUUtilization }}
+{{ end }}
+---
+#
+# Create the service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-service
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+  annotations:
+    {{- with .Values.frontend.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.frontend.isGCPNEG }}
+    cloud.google.com/neg: '{"exposed_ports": {"{{ .Values.frontend.svcPort }}":{}}}'
+    {{- end }}
+spec:
+  ports:
+  - port: {{ .Values.frontend.svcPort }}
+    targetPort: {{ .Values.frontend.port }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+---
+{{ if .Values.frontend.ingress.enabled }}
+#
+# Issuer and cert.
+#
+{{ include "cert" (dict "cert" .Values.frontend.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride)) "namespace" .Values.frontend.namespace "dnsNames" (list .Values.frontend.ingress.host) "Values" .Values) }}
+---
+#
+# Create the ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-ingress
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- if .Values.frontend.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.frontend.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.frontend.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.frontend.ingress.host }}
+    {{- if .Values.frontend.ingress.tls.secretName }}
+    secretName: {{ .Values.frontend.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-my-ss
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.frontend.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-service
+            port:
+              number: {{ .Values.frontend.svcPort }}
+{{- end }}
+{{ end }}

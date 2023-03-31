@@ -1,0 +1,19 @@
+#
+# Validate data for the frontend.
+#
+# {{ required ".Values.frontend.enabled required" .Values.frontend.enabled }}
+# {{ if .Values.frontend.enabled }}
+  # {{ required ".Values.frontend.replicas required" .Values.frontend.replicas }}
+  # {{ required ".Values.frontend.image required" .Values.frontend.image }}
+  # {{ required ".Values.frontend.port required" .Values.frontend.port }}
+  # {{ required ".Values.frontend.svcPort required" .Values.frontend.svcPort }}
+  # {{ required ".Values.frontend.resources required" .Values.frontend.resources }}
+  # {{ required ".Values.frontend.hpa.enabled required" .Values.frontend.hpa.enabled }}
+  # {{ if .Values.frontend.hpa.enabled }}
+    # {{ required ".Values.frontend.hpa.minReplicas required" .Values.frontend.hpa.minReplicas }}
+    # {{ required ".Values.frontend.hpa.maxReplicas required" .Values.frontend.hpa.maxReplicas }}
+    # {{ required ".Values.frontend.hpa.targetAverageMemoryUtilization required" .Values.frontend.hpa.targetAverageMemoryUtilization }}
+    # {{ required ".Values.frontend.hpa.targetAverageCPUUtilization required" .Values.frontend.hpa.targetAverageCPUUtilization }}
+  # {{ end }}
+# {{ end }}
+#

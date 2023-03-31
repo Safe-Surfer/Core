@@ -1,0 +1,294 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.ipsetd.internal.enabled }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# The redis secret, if any.
+#
+{{ include "redisSecret" (dict "Release" .Release "Values" .Values "targetNamespace" .Values.dns.namespace ) }}
+{{- end }}
+---
+#
+# Create the deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  replicas: {{ .Values.dns.ipsetd.internal.replicas }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-ipsetd
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+        app: safesurfer-ipsetd
+        {{- else }}
+        app: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+        {{- end }}
+        {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
+    {{- if .Values.dns.labels }}
+    {{- with .Values.dns.labels }}
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- end }}
+      annotations:
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+        image: {{ .Values.dns.ipsetd.internal.image }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - all
+        ports:
+        {{- if .Values.dns.ipsetd.internal.frontend.udp.enabled }}
+        - name: ipsetd
+          containerPort: {{ .Values.dns.ipsetd.internal.frontend.udp.bindPort }}
+          protocol: UDP
+        {{- else }}
+        - name: ipsetd
+          containerPort: {{ .Values.dns.ipsetd.internal.frontend.http.bindPort }}
+        {{- end }}
+        env:
+        {{- if .Values.dns.ipsetd.internal.backend.redis.enabled }}
+        {{ include "redisEnvs" (dict "Values" .Values "Release" .Release "required" true) | indent 8 }}
+        {{ include "dbEnvs" . | indent 8 }}
+        - name: APP_REDIS_WRITE_TIMEOUT
+          value: {{ .Values.dns.ipsetd.internal.backend.redis.timeout }}
+        - name: APP_REDIS_IP_TTL
+          value: {{ .Values.dns.ipsetd.internal.backend.redis.ipTTL }}
+        {{- else }}
+        - name: APP_BACKEND
+          value: ipset-http-ingress
+        - name: APP_HTTP_INGRESS_WRITE_TIMEOUT
+          value: {{ .Values.dns.ipsetd.internal.backend.http.timeout }}
+        - name: APP_HTTP_INGRESS_BASE_URL
+          value: {{ .Values.dns.ipsetd.internal.backend.http.baseURL }}
+        - name: APP_HTTP_INGRESS_SECRET
+          value: {{ .Values.dns.ipsetd.internal.backend.http.secret }}
+        {{- end }}
+        {{- if .Values.dns.ipsetd.internal.frontend.udp.enabled }}
+        - name: APP_PORT
+          value: ':{{ .Values.dns.ipsetd.internal.frontend.udp.bindPort }}'
+        - name: APP_MAX_BATCH_SIZE
+          value: {{ .Values.dns.ipsetd.internal.frontend.udp.maxBatchSize | quote }}
+        - name: APP_MAX_BATCH_WAIT
+          value: {{ .Values.dns.ipsetd.internal.frontend.udp.maxBatchWait }}
+        {{- else }}
+        - name: APP_FRONTEND
+          value: ipset-http-ingress
+        - name: APP_HTTP_SECRET
+          value: {{ required "specify an http ingress secret" .Values.dns.ipsetd.internal.frontend.http.secret }}
+        - name: APP_PORT
+          value: {{ .Values.dns.ipsetd.internal.frontend.http.bindPort | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.dns.ipsetd.internal.resources | nindent 10 }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+---
+#
+# Create the HPA if needed.
+#
+{{- if .Values.dns.ipsetd.internal.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minReplicas: {{ .Values.dns.ipsetd.internal.hpa.minReplicas }}
+  maxReplicas: {{ .Values.dns.ipsetd.internal.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.dns.ipsetd.internal.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.dns.ipsetd.internal.hpa.targetAverageCPUUtilization }}
+{{- end }}
+---
+#
+# Create the PDB if needed.
+#
+{{- if .Values.dns.ipsetd.internal.pdb.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minAvailable: {{ .Values.dns.ipsetd.internal.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-ipsetd
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+#
+# Create the service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  {{- if and .Values.dns.ipsetd.internal.frontend.udp.enabled .Values.dns.ipsetd.internal.frontend.udp.serviceAnnotations }}
+  annotations:
+    {{- toYaml .Values.dns.ipsetd.internal.frontend.udp.serviceAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and .Values.dns.ipsetd.internal.frontend.udp.enabled .Values.dns.ipsetd.internal.frontend.udp.loadBalancerEnabled }}
+  type: LoadBalancer
+  {{- else }}
+  type: ClusterIP
+  {{- end }}
+  ports:
+  {{- if .Values.dns.ipsetd.internal.frontend.udp.enabled }}
+  - port: {{ .Values.dns.ipsetd.internal.frontend.udp.svcPort }}
+    targetPort: {{ .Values.dns.ipsetd.internal.frontend.udp.bindPort }}
+    protocol: UDP
+    name: udp
+  {{- else }}
+  - port: {{ .Values.dns.ipsetd.internal.frontend.http.svcPort }}
+    targetPort: {{ .Values.dns.ipsetd.internal.frontend.http.bindPort }}
+    protocol: TCP
+    name: http
+  {{- end}}
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    app: safesurfer-ipsetd
+    {{- else }}
+    app: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+    {{- end }}
+---
+#
+# Ingress/cert for ipsetd, if http is the frontend.
+#
+{{ if not .Values.dns.ipsetd.internal.frontend.udp.enabled }}
+#
+# Issuer and cert.
+#
+{{ include "cert" (dict "cert" .Values.dns.ipsetd.internal.frontend.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.ipsetd.internal.frontend.http.ingress.host) "Values" .Values) }}
+---
+#
+# Create the ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- if .Values.dns.ipsetd.internal.frontend.http.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.dns.ipsetd.internal.frontend.http.ingress.host }}
+    {{- if .Values.dns.ipsetd.internal.frontend.http.ingress.tls.secretName }}
+    secretName: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-ipsetd
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}-certs
+    {{- end }}
+  rules:
+  - host: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
+            port:
+              number: {{ .Values.dns.ipsetd.internal.frontend.http.svcPort }}
+{{- end }}
+{{- end }}
+{{- end }}

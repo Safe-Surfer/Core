@@ -1,0 +1,38 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.newDomainNotifier.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    {{- with .Values.dns.newDomainNotifier.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.dns.newDomainNotifier.service.type }}
+  {{- if eq .Values.dns.newDomainNotifier.service.type "LoadBalancer" }}
+  externalTrafficPolicy: Local
+  {{- end }}
+  externalIPs:
+{{- if .Values.dns.newDomainNotifier.service.externalIPs }}
+{{- with .Values.dns.newDomainNotifier.service.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  ports:
+    - port: {{ .Values.dns.newDomainNotifier.service.port }}
+      targetPort: {{ .Values.dns.newDomainNotifier.bindPort }}
+      protocol: UDP
+      name: udp
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    app: safesurfer-newDomainNotifier
+    {{- else }}
+    app: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}
+    {{- end }}
+{{- end }}
+{{- end }}

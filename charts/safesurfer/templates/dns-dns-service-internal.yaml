@@ -1,0 +1,30 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.dns.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+  name: {{ include "name" (dict "Release" .Release "name" "safesurfer-internal") }}
+  {{- else }}
+  name: {{ include "name" (dict "Release" .Release "name" "dns-internal") }}
+  {{- end }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+  - name: dns
+    port: 53
+    protocol: UDP
+    targetPort: {{ .Values.dns.dns.bindPort }}
+  - name: dns-tcp
+    port: 53
+    protocol: TCP
+    targetPort: {{ .Values.dns.dns.bindPort }}
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    app: {{ include "dnsContainerAndAppName" . }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,107 @@
+{{ if .Values.categorizer.adminApp.enabled }}
+{{ if .Values.categorizer.autoCat.enabled }}
+{{ if .Values.categorizer.autoCat.addFromDNS.enabled }}
+---
+#
+# Secret for the categorizer access key.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}-categorizer-access-key
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+type: Opaque
+data:
+  key: {{ required "Auto-adding from DNS requires a categorizer access key" .Values.categorizer.autoCat.addFromDNS.categorizerAccessKey | b64enc | quote }}
+---
+#
+# Deployment
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+      annotations:
+        checksum/categorizer-access-key: {{ .Values.categorizer.autoCat.addFromDNS.categorizerAccessKey | sha256sum }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+        image: {{ .Values.categorizer.autoCat.addFromDNS.image }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+          - name: FLUSH_INTERVAL
+            value: {{ .Values.categorizer.autoCat.addFromDNS.interval }}
+          # Where to reach the categorizer
+          - name: CATEGORIZER_URL
+            value: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}.svc.cluster.local:{{ .Values.categorizer.adminApp.svcPort }}
+          # Port to listen on
+          - name: APP_PORT
+            value: {{ .Values.categorizer.autoCat.addFromDNS.port | quote }}
+          # The access key to use for the categorizer: must have a value of 2 or above
+          - name: CATEGORIZER_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}-categorizer-access-key
+                key: key
+          - name: CATEGORIZER_USERNAME
+            value: {{ .Values.categorizer.autoCat.addFromDNS.categorizerUsername }}
+          # How long to wait for internal http
+          - name: APP_INTERNAL_HTTP_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.addFromDNS.categorizerHTTPTimeout }}
+          - name: APP_DOMAIN_ADD_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.addFromDNS.categorizerDomainAddJobTimeout }}
+          - name: APP_MIN_CHECK_INTERVAL
+            value: {{ .Values.categorizer.autoCat.addFromDNS.domainChecking.interval }}
+          - name: APP_CHECK_TIMEOUT
+            value: {{ .Values.categorizer.autoCat.addFromDNS.domainChecking.timeout }}
+          # Whether to show additional logging
+          - name: DEBUG
+            value: {{ .Values.categorizer.autoCat.addFromDNS.debug | quote }}
+        ports:
+          - containerPort: {{ .Values.categorizer.autoCat.addFromDNS.port }}
+        resources:
+          {{- toYaml .Values.categorizer.autoCat.addFromDNS.resources | nindent 10 }}
+---
+#
+# Service
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+  annotations:
+    {{- with .Values.categorizer.autoCat.addFromDNS.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: {{ .Values.categorizer.autoCat.addFromDNS.svcPort }}
+    targetPort: {{ .Values.categorizer.autoCat.addFromDNS.port }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "new-domain-queue" "nameOverride" .Values.categorizer.autoCat.addFromDNS.nameOverride) }}
+
+{{ end }}
+{{ end }}
+{{ end }}

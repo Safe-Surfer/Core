@@ -1,0 +1,3 @@
+{{- define "newDomainNotifierAddConfig" }}
+{{- toYaml .Values.dns.newDomainNotifier.addConfig.domainAddConfig }}
+{{- end }}

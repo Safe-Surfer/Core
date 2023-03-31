@@ -1,0 +1,410 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.dns.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  replicas: {{ .Values.dns.dns.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "dnsContainerAndAppName" . }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- if .Values.dns.dns.deploymentStrategy }}
+  strategy:
+{{- with .Values.dns.dns.deploymentStrategy }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dnsContainerAndAppName" . }}
+        {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 8 }}
+{{- end }}
+{{- end }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8082"
+        prometheus.io/scrape: "true"
+        checksum/config: {{ include (print $.Template.BasePath "/dns-ns-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/dns-dns-database-secret.yaml") . | sha256sum }}
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar .Values.dns.doh.cert .Values.dns.doh.key }}
+        checksum/doh-certs: {{ include (print $.Template.BasePath "/dns-doh-certificate.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if and .Values.dns.dot.enabled .Values.dns.dot.sidecar .Values.dns.dot.cert .Values.dns.dot.key }}
+        checksum/dot-certs: {{ include (print $.Template.BasePath "/dns-dot-certificate.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      {{- if .Values.dns.dns.hostNetwork }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      automountServiceAccountToken: false
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: {{ add .Values.dns.dns.terminationGracePeriodSeconds .Values.dns.dns.terminationWaitPeriodSeconds }}
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      securityContext:
+        {{- toYaml .Values.dns.dns.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ include "dnsContainerAndAppName" . }}
+          securityContext:
+            {{- toYaml .Values.dns.dns.securityContext | nindent 12 }}
+          image: {{ .Values.dns.dns.image }}
+          ports:
+            - name: udp
+              containerPort: {{ .Values.dns.dns.bindPort }}
+              protocol: UDP
+            - name: tcp
+              containerPort: {{ .Values.dns.dns.bindPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              port: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort }}
+              path: {{ urlJoin (dict "path" "/healthy" "query" (printf "target=dns&secret=%s" .Values.dns.dns.sidecarContainers.healthCheck.httpSecret.secret )) | quote }}
+            timeoutSeconds: 20
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            successThreshold: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              port: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort }}
+              path: {{ urlJoin (dict "path" "/healthy" "query" (printf "target=dns&secret=%s" .Values.dns.dns.sidecarContainers.healthCheck.httpSecret.secret )) | quote }}
+            timeoutSeconds: 20
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 3
+          # If we're using HTTP health checks too, wait for them to update before actually terminating the container
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - sleep
+                - {{ .Values.dns.dns.terminationWaitPeriodSeconds | quote }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            {{- if .Values.dns.blockHostOverride }}
+            - name: BLOCK_HOST
+              value: {{ .Values.dns.blockHostOverride }}
+            {{- else }}
+            - name: BLOCK_HOST
+              value: {{ .Values.blockpage.domain }}
+            {{- end }}
+            - name: PROTO_ACTIVE_HOST
+              value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
+            - name: PROTO_PLAIN_HOST
+              value: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
+            - name: ACCOUNT_QUERY_DOMAIN
+              value: {{ .Values.dns.dns.debugging.accountQueryDomain }}
+            - name: PROTO_QUERY_DOMAIN
+              value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
+            - name: DOMAIN_LOOKUP_DOMAIN
+              value: {{ required "dns domain lookup domain required" .Values.dns.dns.debugging.domainLookupDomain }}
+            - name: EXPLAIN_LOOKUP_DOMAIN
+              value: {{ required "dns explain lookup domain required" .Values.dns.dns.debugging.explainDomain }}
+            # Clickhouse config
+            {{- if (or .Values.dns.clickhoused.external.enabled .Values.dns.clickhoused.internal.enabled) }}
+            - name: SS_ENABLE_CLICKHOUSED
+              value: '1'
+            {{- if .Values.dns.clickhoused.internal.enabled }}
+            {{- if not .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+            {{- fail ".dns.clickhoused.internal.frontend.udp.enabled should be true if .dns.dns.enabled is true" }}
+            {{- end }}
+            - name: SS_CLICKHOUSED_PORT
+              value: {{ .Values.dns.clickhoused.internal.frontend.udp.svcPort | quote }}
+            - name: SS_CLICKHOUSED_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+            {{- else }}
+            - name: SS_CLICKHOUSED_PORT
+              value: {{ .Values.dns.clickhoused.external.port | quote }}
+            - name: SS_CLICKHOUSED_HOST
+              value: {{ .Values.dns.clickhoused.external.host }}
+            {{- end }}
+            {{- end }}
+            # ipsetd config
+            {{- if (and .Values.dns.ipsetd.internal.enabled .Values.dns.ipsetd.internal.frontend.udp.enabled) }}
+            - name: SS_IPSETD_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.internal.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}.svc.cluster.local
+            - name: SS_IPSETD_PORT
+              value: {{ .Values.dns.ipsetd.internal.frontend.udp.svcPort | quote }}
+            {{- else if .Values.dns.ipsetd.external.enabled }}
+            - name: SS_IPSETD_HOST
+              value: {{ required "need ipsetd host" .Values.dns.ipsetd.external.host }}
+            - name: SS_IPSETD_PORT
+              value: {{ required "need ipsetd port" .Values.dns.ipsetd.external.port | quote }}
+            {{- end }}
+            # New domain notififer config
+            {{- if .Values.dns.newDomainNotifier.enabled }}
+            - name: SS_NEW_DOMAIN_NOTIFIER_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "new-domain-notifier" "nameOverride" .Values.dns.newDomainNotifier.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+            - name: SS_NEW_DOMAIN_NOTIFIER_PORT
+              value: {{ .Values.dns.newDomainNotifier.service.port | quote }}
+            {{- end }}
+            #
+            # DB Connection
+            #
+            {{ include "dbEnvs" . | indent 12 }}
+            {{- with .Values.dns.dns.extraEnv }}
+                {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.dns.extraEnv }}
+                {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+          - name: lmdb
+            mountPath: /lmdb
+          - name: var-run
+            mountPath: /var/run
+          - name: var-www-logs
+            mountPath: /var/www/logs
+          - name: tmp
+            mountPath: /tmp
+          - name: main-confmap
+            mountPath: /etc/pdns/recursor.conf
+            subPath: recursor.conf
+          - name: main-confmap
+            mountPath: /etc/pdns/basic-setup.rpz
+            subPath: basic-setup.rpz
+          resources:
+            {{- toYaml .Values.dns.dns.resources | nindent 12 }}
+        # Health check container
+        - name: {{ include "name" (dict "Release" .Release "name" "status" "nameOverride" .Values.dns.dns.sidecarContainers.healthCheck.nameOverride) }}
+          image: {{ .Values.dns.dns.sidecarContainers.healthCheck.image }}
+          securityContext:
+            {{- toYaml .Values.dns.dns.sidecarContainers.healthCheck.securityContext | nindent 12 }}
+          ports:
+          - containerPort: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort }}
+          volumeMounts:
+          - name: main-confmap
+            mountPath: /app/status.yaml
+            subPath: status.yaml
+          # Return unhealthy before actually exiting
+          lifecycle:
+            preStop:
+              httpGet:
+                port: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort }}
+                path: /shutdown?secret={{ .Values.dns.dns.sidecarContainers.healthCheck.httpSecret.secret }}
+          env:
+          - name: APP_PORT
+            value: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort | quote }}
+          {{- if .Values.dns.dns.sidecarContainers.healthCheck.httpSecret.enabled }}
+          - name: APP_HTTP_SECRET
+            value: {{ .Values.dns.dns.sidecarContainers.healthCheck.httpSecret.secret }}
+          {{- end }}
+          {{- if .Values.dns.dns.sidecarContainers.healthCheck.useFallbackRoute }}
+          - name: APP_ENABLE_FALLBACK_ROUTE
+            value: 'true'
+          {{- end }}
+          - name: APP_MODE_IMMEDIATE
+            value: 'true'
+          resources:
+            {{- toYaml .Values.dns.dns.sidecarContainers.healthCheck.resources | nindent 12 }}
+        # Continuously dump accounts
+        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-manager-accounts" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverrideAccounts) }}
+          image: {{ .Values.dns.dns.sidecarContainers.lmdbManager.image }}
+          securityContext:
+            {{- toYaml .Values.dns.dns.podSecurityContext | nindent 12 }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: LMDB_LOCATION
+              value: /lmdb
+            #
+            # DB Connection
+            #
+            {{ include "dbEnvs" . | indent 12 }}
+          {{- with .Values.dns.dns.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+          - python3
+          args:
+          - /app/dump-accounts.py
+          - $(LMDB_LOCATION)
+          volumeMounts:
+          - name: lmdb
+            mountPath: /lmdb
+          resources:
+            {{- toYaml .Values.dns.dns.sidecarContainers.lmdbManager.resources.accounts | nindent 12 }}
+        # Continuously dump domains
+        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-manager-domains" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverrideDomains) }}
+          image: {{ .Values.dns.dns.sidecarContainers.lmdbManager.image }}
+          securityContext:
+            {{- toYaml .Values.dns.dns.podSecurityContext | nindent 12 }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: LMDB_LOCATION
+              value: /lmdb
+            #
+            # DB Connection
+            #
+            {{ include "dbEnvs" . | indent 12 }}
+          {{- with .Values.dns.dns.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+          - python3
+          args:
+          - /app/dump-domains.py
+          - $(LMDB_LOCATION)
+          volumeMounts:
+          - name: lmdb
+            mountPath: /lmdb
+          resources:
+            {{- toYaml .Values.dns.dns.sidecarContainers.lmdbManager.resources.domains | nindent 12 }}
+        {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar }}
+        {{- include "dohContainer" (dict "Values" .Values "Release" .Release "sidecar" true) | nindent 8 }}
+        {{- end }}
+        {{- if and .Values.dns.dot.enabled .Values.dns.dot.sidecar }}
+        {{- include "dotContainer" (dict "Values" .Values "Release" .Release "sidecar" true) | nindent 8 }}
+        {{- end }}
+      {{- if .Values.dns.dns.extraSidecarContainers }}
+      {{- with .Values.dns.dns.extraSidecarContainers }}
+          {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.dns.dns.initContainers.iptablesProvisioner.enabled }}
+        - name: {{ include "name" (dict "Release" .Release "name" "init-iptables" "nameOverride" .Values.dns.dns.initContainers.iptablesProvisioner.nameOverride) }}
+          image: {{ .Values.dns.dns.initContainers.iptablesProvisioner.image }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: DNS_PORT
+              value: "{{ .Values.dns.dns.bindPort | toString }}"
+            - name: EXTERNAL_DEV
+              value: {{ .Values.dns.dns.initContainers.iptablesProvisioner.ifcName }}
+          {{- with .Values.dns.dns.initContainers.iptablesProvisioner.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        - name: {{ include "name" (dict "Release" .Release "name" "init-lmdb" "nameOverride" .Values.dns.dns.initContainers.initLmdb.nameOverride) }}
+          image: {{ .Values.dns.dns.initContainers.initLmdb.image }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: LMDB_LOCATION
+              value: /lmdb
+            # Determine anonymous logging behavior
+            {{- if .Values.dns.dns.anonymousLogging.enabled }}
+            - name: SS_ENABLE_ANONYMOUS_LOGGING
+              value: '1'
+            {{- end }}
+            {{- if .Values.dns.dns.anonymousLogging.fullHistoryEnabled }}
+            - name: SS_ENABLE_ANONYMOUS_FULL_HISTORY
+              value: '1'
+            {{- end }}
+            #
+            # DB Connection
+            #
+            {{ include "dbEnvs" . | indent 12 }}
+          {{- with .Values.dns.dns.initContainers.initLmdb.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+          volumeMounts:
+          - name: lmdb
+            mountPath: /lmdb
+      volumes:
+        - name: lmdb
+          emptyDir: {}
+        - name: var-www-logs
+          emptyDir: {}
+        - name: var-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: main-confmap
+          configMap:
+            name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+        {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar }}
+        - name: doh-certs
+          secret:
+            {{- if .Values.dns.doh.tls.secretName }}
+            secretName: {{ .Values.dns.doh.tls.secretName }}
+            {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+            secretName: letsencrypt-prod-doh
+            {{- else }}
+            secretName: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}-cert
+            {{- end }}
+        {{- end }}
+        {{- if and .Values.dns.dot.enabled .Values.dns.dot.sidecar }}
+        - name: dot-certs
+          secret:
+            {{- if .Values.dns.dot.tls.secretName }}
+            secretName: {{ .Values.dns.dot.tls.secretName }}
+            {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+            secretName: letsencrypt-prod-dot
+            {{- else }}
+            secretName: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}-cert
+            {{- end }}
+        {{- end }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- if .Values.dns.dns.affinity }}
+    {{- with .Values.dns.dns.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- end }}

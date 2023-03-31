@@ -1,0 +1,34 @@
+#
+# A job that copies postgres-operator db credentials from the database's namespace
+# into a target namespace.
+#
+{{- define "dbAuthInjectorJob" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-auth-injector-{{ .targetNamespace }}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: db-auth-injector-sa
+      containers:
+      - name: kubectl
+        image: bitnami/kubectl
+        env:
+        - name: TARGET_NAMESPACE
+          value: {{ .targetNamespace }}
+        - name: DB_USERNAME
+          value: {{ .dbUsername }}
+        - name: DB_NAME
+          value: {{ .dbName }}
+        - name: DB_NAMESPACE
+          value: {{ .dbNamespace }}
+        - name: JOB_NAME
+          value: db-auth-injector-{{ .targetNamespace }}
+        command:
+        - bash
+        args:
+        - '-c'
+        - 'kubectl -n ${TARGET_NAMESPACE} delete secret db-login --ignore-not-found && kubectl get secret ${DB_USERNAME}.${DB_NAME}.credentials.postgresql.acid.zalan.do -n ${DB_NAMESPACE} -o yaml | sed s/"namespace: ${DB_NAMESPACE}"/"namespace: ${TARGET_NAMESPACE}"/ | sed s/"name: ${DB_USERNAME}.${DB_NAME}.credentials.postgresql.acid.zalan.do"/"name: db-login"/ | kubectl apply -n ${TARGET_NAMESPACE} -f -; kubectl delete job ${JOB_NAME};'
+{{- end }}

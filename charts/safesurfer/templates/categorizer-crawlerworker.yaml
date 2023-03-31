@@ -1,0 +1,162 @@
+{{- if .Values.categorizer.autoCat.crawlerWorker.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-sa
+ namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+ name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-role
+ namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - list
+- apiGroups:
+  - batch
+  - extensions
+  resources:
+  - jobs
+  verbs:
+  - get
+  - create
+  - list
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-role-binding
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+roleRef:
+  kind: Role
+  name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-sa
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+{{- if .Values.categorizer.autoCat.crawlerWorker.jobs.translation.enabled }}
+{{- include "translationProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.categorizer.autoCat.crawlerWorker.jobs.translation.provider "targetNamespace" .Values.categorizer.namespace) }}
+{{- end }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+{{- if .Values.categorizer.autoCat.crawlerWorker.jobs.storage.enabled }}
+{{- include "storageProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.categorizer.autoCat.crawlerWorker.jobs.storage.provider "targetNamespace" .Values.categorizer.namespace) }}
+{{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+      serviceAccountName: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}-sa
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+        image: {{ .Values.categorizer.autoCat.crawlerWorker.image }}
+        env:
+        - name: CRAWLER_LABEL
+          value: {{ include "name" (dict "Release" .Release "name" "crawler" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.jobs.nameOverride) }}
+        - name: CRAWLER_NAMESPACE
+          value: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+        - name: CRAWLER_TRANSLATION_ENABLED
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.translation.enabled | quote }}
+        - name: CRAWLER_STORAGE_ENABLED
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.storage.enabled | quote }}
+        - name: CRAWLER_CPU_LIMIT
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.resources.limits.cpu }}
+        - name: CRAWLER_CPU_REQUEST
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.resources.requests.cpu }}
+        - name: CRAWLER_MEM_LIMIT
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.resources.limits.memory }}
+        - name: CRAWLER_MEM_REQUEST
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.resources.requests.memory }}
+        - name: CRAWLER_IMAGE_PULL_SECRET_NAME
+          value: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+        - name: CRAWLER_IMAGE
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.image }}
+        - name: APP_SERVICE_NAME
+          value: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+        - name: APP_SERVICE_PORT
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.svcPort | quote }}
+        - name: APP_MAX_JOBS
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.maxConcurrentJobs | quote }}
+        {{- if .Values.categorizer.autoCat.crawlerWorker.jobs.translation.enabled }}
+        {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+        - name: CRAWLER_TRANSLATION_SECRET_NAME
+          value: translation-config-{{ .Values.categorizer.autoCat.crawlerWorker.jobs.translation.provider }}
+        {{- else }}
+        - name: CRAWLER_TRANSLATION_SECRET_NAME
+          value: {{ include "name" (dict "Release" .Release "name" (printf "translation-config-%s" .Values.categorizer.autoCat.crawlerWorker.jobs.translation.provider)) }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.categorizer.autoCat.crawlerWorker.jobs.storage.enabled }}
+        {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+        - name: CRAWLER_STORAGE_SECRET_NAME
+          value: storage-config-{{ .Values.categorizer.autoCat.crawlerWorker.jobs.storage.provider }}
+        {{- else }}
+        - name: CRAWLER_STORAGE_SECRET_NAME
+          value: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.categorizer.autoCat.crawlerWorker.jobs.storage.provider)) }}
+        {{- end }}
+        {{- end }}
+        - name: CRAWLER_STORAGE_PROVIDER
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.jobs.storage.provider }}
+        - name: APP_HTTP_BIND
+          value: '0.0.0.0:{{ .Values.categorizer.autoCat.crawlerWorker.port }}'
+        {{ include "redisEnvs" (dict "Values" .Values "Release" .Release "required" true) | indent 8 }}
+        ports:
+        - containerPort: {{ .Values.categorizer.autoCat.crawlerWorker.port }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.categorizer.autoCat.crawlerWorker.port }}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+  annotations:
+    {{- with .Values.categorizer.autoCat.crawlerWorker.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: {{ .Values.categorizer.autoCat.crawlerWorker.svcPort }}
+    targetPort: {{ .Values.categorizer.autoCat.crawlerWorker.port }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "crawler-worker" "nameOverride" .Values.categorizer.autoCat.crawlerWorker.nameOverride) }}
+{{- end }}

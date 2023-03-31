@@ -1,0 +1,8 @@
+#
+# Cert and cluster issuer
+#
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.doh.enabled }}
+{{ include "cert" (dict "cert" .Values.dns.doh.tls "noHttpSupport" true "overrideLegacyName" "letsencrypt-prod-doh" "Release" .Release "name" (include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.doh.host) "Values" .Values) }}
+{{- end }}
+{{- end }}

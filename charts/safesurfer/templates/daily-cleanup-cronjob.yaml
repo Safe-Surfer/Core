@@ -1,0 +1,59 @@
+{{ if and .Values.api.enabled .Values.api.dailyCleanup.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "daily-cleanup" "nameOverride" .Values.api.dailyCleanup.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  schedule: 30 2 * * *
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+          containers:
+          - name: {{ include "name" (dict "Release" .Release "name" "daily-cleanup" "nameOverride" .Values.api.dailyCleanup.nameOverride) }}
+            image: {{ .Values.api.dailyCleanup.image }}
+            resources:
+              {{- toYaml .Values.api.dailyCleanup.resources | nindent 14 }}
+            env:
+            # Include DB connection
+            {{ include "dbEnvs" . | indent 12 }}
+            {{ include "loggingEnvs" (dict "level" .Values.api.dailyCleanup.logLevel) | indent 12 }}
+            - name: APP_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.main }}
+            - name: APP_DB_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.db }}
+            - name: APP_TIMER_RESET_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.resetTimers }}
+            - name: APP_AE_USAGE_HISTORY_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.aeUsageHistory }}
+            - name: AE_ALERTS_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.aeAlerts }}
+            - name: APP_VPN_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.vpnAttempts }}
+            - name: APP_EVASION_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.evasionAttempts }}
+            - name: APP_NOTIFICATIONS_LOG_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.notificationsLog }}
+            - name: APP_CASTS_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.casts }}
+            - name: APP_CHARGEBEE_PRODUCT_CATALOG_2
+              value: {{ .Values.api.accounts.chargebee.productCatalog2 | quote }}
+            {{ if .Values.api.accounts.chargebee.site }}
+            - name: CHARGEBEE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-chargebee-secrets
+                  key: api-key
+            - name: CHARGEBEE_SITE
+              value: {{ .Values.api.accounts.chargebee.site }}
+            {{- end }}
+          restartPolicy: OnFailure
+{{ end }}

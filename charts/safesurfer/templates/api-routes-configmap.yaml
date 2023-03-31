@@ -1,0 +1,87 @@
+{{- if .Values.api.enabled }}
+---
+#
+# Configmap for routes config.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+  name: routes-config
+  {{- else }}
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-routes-config
+  {{- end }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+data:
+  routes-config.yaml: |-
+    ---
+    routes:
+      {{- if .Values.api.routesConfig }}
+      {{- toYaml .Values.api.routesConfig | nindent 6 }}
+      {{- end }}
+      {{- if not .Values.api.ipLinking.enabled }}
+      "181":
+        disable: true # linked IP
+      "43":
+        disable: true # linked IP
+      "42":
+        disable: true # linked IP
+      "12":
+        disable: true # linked IP
+      "13":
+        disable: true # linked IP
+      {{- end }}
+    {{- if .Values.api.quotas }}
+    quotas:
+      {{- toYaml .Values.api.quotas | nindent 6 }}
+    {{- end }}
+    plans:
+      {{- if .Values.api.accounts.anyPlanConfig }}
+      any:
+        {{- toYaml .Values.api.accounts.anyPlanConfig | nindent 8 }}
+      {{- end }}
+      {{- if .Values.api.accounts.courtesyPlanConfig }}
+      courtesy:
+        {{- toYaml .Values.api.accounts.courtesyPlanConfig | nindent 8 }}
+      {{- end }}
+      chargebee:
+        {{- if .Values.api.accounts.chargebee.currencyByCountry }}
+        currencyByCountry:
+          {{- toYaml .Values.api.accounts.chargebee.currencyByCountry | nindent 10 }}
+        {{- end }}
+        {{- if .Values.api.accounts.chargebee.planConfig.any }}
+        any:
+          {{- toYaml .Values.api.accounts.chargebee.planConfig.any | nindent 10 }}
+        {{- end }}
+        {{- if .Values.api.accounts.chargebee.planConfig.plans }}
+        plans:
+          {{- toYaml .Values.api.accounts.chargebee.planConfig.plans | nindent 10 }}
+        {{- end }}
+        {{- if .Values.api.accounts.chargebee.planConfig.addons }}
+        addons:
+          {{- toYaml .Values.api.accounts.chargebee.planConfig.addons | nindent 10 }}
+        {{- end }}
+      {{- if .Values.api.accounts.googlePlay.planConfig }}
+      googlePlay:
+        {{- toYaml .Values.api.accounts.googlePlay.planConfig | nindent 8 }}
+      {{- end }}
+    roles:
+      complete-twofactor:
+        routes:
+        - 162 # Submit 2fa token
+      approval-required:
+        routes:
+        - 214 # Remove restriction
+        {{- if .Values.api.accounts.approvalRequiredEndpoints }}
+        {{- toYaml .Values.api.accounts.approvalRequiredEndpoints | nindent 8 }}
+        {{- end }}
+      verify-email:
+        routes:
+        - 214 # Remove restriction
+        {{- if .Values.api.accounts.verifyEmailEndpoints }}
+        {{- toYaml .Values.api.accounts.verifyEmailEndpoints | nindent 8 }}
+        {{- end }}
+    {{- if .Values.api.rolesConfig }}
+      {{- toYaml .Values.api.rolesConfig | nindent 6 }}
+    {{- end }}
+{{- end }}

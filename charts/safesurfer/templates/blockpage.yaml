@@ -1,0 +1,204 @@
+{{ if .Values.blockpage.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# The namespace
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.blockpage.namespace }}
+{{- end }}
+---
+#
+# Self-signed cert issuer.
+#
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  selfSigned: {}
+---
+#
+# Self-signed cert.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  secretName: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  issuerRef:
+    name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+    kind: Issuer
+    group: cert-manager.io
+  dnsNames:
+    - {{ .Values.blockpage.domain }}
+{{- if .Values.blockpage.imagePullSecret }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}-image-pull
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.blockpage.imagePullSecret }}
+{{- end }}
+---
+#
+# The deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  replicas: {{ .Values.blockpage.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+    spec:
+      automountServiceAccountToken: false
+      {{- if .Values.blockpage.imagePullSecret }}
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}-image-pull
+      {{- end }}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+        image: {{ .Values.blockpage.image }}
+        env:
+        - name: APP_CATEGORIZER_URL
+          value: https://{{ .Values.categorizer.adminApp.ingress.host }}
+        - name: APP_HTTPS_PORT
+          value: ':8443'
+        - name: APP_HTTPS_CRT_PATH
+          value: /app/tls.crt
+        - name: APP_HTTPS_KEY_PATH
+          value: /app/tls.key
+        - name: APP_HANDLE_GZIP
+          value: 'true'
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 101
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+            mountPath: /app/tls.crt
+            subPath: tls.crt
+            readOnly: true
+          - name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+            mountPath: /app/tls.key
+            subPath: tls.key
+            readOnly: true
+        imagePullPolicy: Always
+        ports:
+          - name: http
+            containerPort: 8080
+          - name: https
+            containerPort: 8443
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 20
+        resources:
+          {{- toYaml .Values.blockpage.resources | nindent 10 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+          secret:
+            secretName: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+---
+#
+# HPA, if enabled.
+#
+{{ if .Values.blockpage.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  maxReplicas: {{ .Values.blockpage.hpa.maxReplicas }}
+  minReplicas: {{ .Values.blockpage.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.blockpage.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.blockpage.hpa.targetAverageCPUUtilization }}
+{{ end }}
+---
+#
+# PDB, if enabled.
+#
+{{ if .Values.blockpage.pdb.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  minAvailable: {{ .Values.blockpage.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+{{ end }}
+---
+#
+# Load balancer service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.blockpage.namespace) }}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+  - port: 80
+    name: http
+    targetPort: 8080
+  - port: 443
+    name: https
+    targetPort: 8443
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "block-page" "nameOverride" .Values.blockpage.nameOverride) }}
+{{ end }}

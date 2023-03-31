@@ -1,0 +1,778 @@
+{{ if .Values.api.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# The namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.api.namespace }}
+{{- end }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+#
+# Secret for GCP service account.
+#
+{{ if .Values.api.screencasts.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gcp-service-account
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  gcp-service-account.json: {{ .Values.api.screencasts.gcpServiceAccount | b64enc | quote }}
+{{ end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for DB connection.
+#
+{{ include "dbSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for clickhouse connection
+#
+{{ include "clickhouseSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+---
+#
+# Secret for sendgrid API key.
+#
+{{ if and (or (not .Values.api.accounts.managed) (.Values.api.alerts.mailbot.enabled)) (not .Values.testFlags.api.noSendgrid) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-sendgrid-secret
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  secret: {{ required "Non-managed accounts and alerts require a sendgrid API key" .Values.api.sendgrid.apiKey | b64enc | quote }}
+{{ end }}
+---
+#
+# Secret for web-push vapid private key.
+#
+{{ if .Values.api.notifications.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-web-push-secret
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  private: {{ required "Notifications require a VAPID private key" .Values.api.notifications.vapidPrivateKey | b64enc | quote }}
+{{ end }}
+---
+#
+# Secret for chargebee API key.
+#
+{{ if .Values.api.accounts.chargebee.site }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-chargebee-secrets
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  api-key: {{ required "Chargebee API key required" .Values.api.accounts.chargebee.apiKey | b64enc | quote }}
+{{ end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# ipinfo secret, if any
+#
+{{- if .Values.api.ipInfoProvider }}
+{{- include "ipinfoProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.ipInfoProvider "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
+#
+# Secret for google play developer API.
+#
+{{- if .Values.api.accounts.googlePlay.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-android-publisher-secrets
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  clientid: {{ required "Google Play Client ID required" .Values.api.accounts.googlePlay.apiSecrets.clientID | b64enc | quote }}
+  clientsecret: {{ required "Google Play Client Secret required" .Values.api.accounts.googlePlay.apiSecrets.clientSecret | b64enc | quote }}
+  refreshtoken: {{ required "Google Play Refresh Token required" .Values.api.accounts.googlePlay.apiSecrets.refreshToken | b64enc | quote }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# The redis secret, if any.
+#
+{{ include "redisSecret" (dict "Release" .Release "Values" .Values "targetNamespace" .Values.api.namespace ) }}
+{{- end }}
+---
+{{- if .Values.api.accounts.chargebee.webhookPassword }}
+#
+# Chargebee webhook password, if any.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-chargebee-webhook
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  password: {{ .Values.api.accounts.chargebee.webhookPassword | b64enc | quote }}
+{{- end }}
+---
+#
+# The deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        #
+        # Ensure rolling deployments when mounted secrets change.
+        #
+        checksum/resources: {{ include (print $.Template.BasePath "/api-resources-configmap.yaml") . | sha256sum }}
+        checksum/routes-config: {{ include (print $.Template.BasePath "/api-routes-configmap.yaml") . | sha256sum }}
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        {{ if .Values.api.screencasts.enabled }}
+        checksum/gcp-service-account: {{ .Values.api.screencasts.gcpServiceAccount | sha256sum }}
+        {{ end }}
+        {{ if .Values.api.notifications.enabled }}
+        checksum/web-push-secret: {{ .Values.api.notifications.vapidPrivateKey | sha256sum }}
+        {{ end }}
+        {{- if and (or (not .Values.api.accounts.managed) (.Values.api.alerts.mailbot.enabled)) (not .Values.testFlags.api.noSendgrid) }}
+        checksum/sendgrid-secret: {{ .Values.api.sendgrid.apiKey | sha256sum }}
+        {{- end }}
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+        {{ if .Values.api.accounts.chargebee.site }}
+        checksum/chargebee-secrets: {{ .Values.api.accounts.chargebee.apiKey | sha256sum }}
+        {{ end }}
+        {{- if .Values.api.accounts.chargebee.webhookPassword }}
+        checksum/cb-webhook-password: {{ .Values.api.accounts.chargebee.webhookPassword | sha256sum }}
+        {{- end }}
+        {{- if .Values.api.ipInfoProvider }}
+        checksum/ipinfo: {{ include "ipinfoProviderObject" (dict "Values" .Values "key" .Values.api.ipInfoProvider) | sha256sum }}
+        {{- end }}
+    spec:
+      #
+      # Use the global image pull secret.
+      #
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+
+      automountServiceAccountToken: false
+      #
+      # Volume for mounting GCP service account if needed.
+      #
+      volumes:
+      {{- if .Values.api.screencasts.enabled }}
+      - name: gcp-service-account
+        secret:
+          secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gcp-service-account
+      {{- end }}
+      {{- if .Values.api.ipInfoProvider }}
+      - name: ipinfo
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: ipinfo-config-{{ .Values.api.ipInfoProvider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "ipinfo-config-%s" .Values.api.ipInfoProvider)) }}
+          {{- end }}
+      {{- end }}
+      - name: routes-config
+        configMap:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          name: routes-config
+          {{- else }}
+          name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-routes-config
+          {{- end }}
+          optional: false
+      - name: resources
+        configMap:
+          name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-resources
+          optional: false
+      - name: pq-emptydir
+        emptyDir:
+          medium: Memory
+
+      containers:
+        #
+        # Pull the specified image, name the container the same as everything else.
+        #
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+        image: {{ .Values.api.image }}
+
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+          #
+          # DB Connection
+          #
+          {{ include "dbEnvs" . | indent 10 }}
+          {{ include "emailEnvs" . | indent 10 }}
+
+          # admin internal
+          {{ include "apiInternalConnection" . | indent 10 }}
+          - name: APP_ADMIN_PORT
+            value: {{ .Values.api.adminPort | quote }}
+
+          - name: APP_CORS_ALLOWED_ORIGINS
+            value: 'https://{{.Values.frontend.ingress.host}}{{- if .Values.categorizer.adminApp.ingress.host }},https://{{.Values.categorizer.adminApp.ingress.host}}{{- end }}{{- if .Values.api.cors.extraOrigins }},{{ .Values.api.cors.extraOrigins }}{{- end }}'
+
+          # i18n
+          - name: APP_DEFAULT_LANG
+            value: {{ .Values.i18n.defaultLanguage }}
+          
+          # alerts
+          - name: APP_ALERTS_LOOKAHEAD_MULTIPLIER
+            value: {{ .Values.api.alerts.lookaheadMultiplier | quote }}
+
+          # Ipsets connection/params
+          {{ include "redisEnvs" . | indent 10 }}
+          - name: APP_IPSETS_CACHE_CONTROL_MAX_AGE
+            value: {{ .Values.api.ipsets.cacheMaxAge }}
+          - name: APP_IPSETS_NEXT_SYNC_WAIT_SECS
+            value: {{ .Values.api.ipsets.nextSyncWait }}
+          - name: APP_IPSETS_CACHE_CONTROL_USE_HTTP
+            value: {{ .Values.api.ipsets.cacheHttpHeader | quote }}
+
+          # Clickhouse connection/params
+          {{ include "clickhouseEnvs" . | indent 10 }}
+          - name: APP_CLICKHOUSE_READ_TIMEOUT
+            value: {{ .Values.api.clickhouse.readTimeout | quote }}
+
+          {{- if and (or (not .Values.api.accounts.managed) (.Values.api.alerts.mailbot.enabled)) (not .Values.testFlags.api.noSendgrid) }}
+          - name: SAFESURFER_SENDGRID_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-sendgrid-secret
+                key: secret
+          - name: EMAIL_OUR_NAME
+            value: {{ .Values.api.sendgrid.senderName }}
+          - name: EMAIL_OUR_ADDRESS
+            value: {{ .Values.api.sendgrid.senderAddress }}
+          {{- end }}
+
+          #
+          # Port to run on so service can communicate
+          #
+          - name: APP_PORT
+            value: {{ .Values.api.port | quote }}
+          - name: APP_HEALTH_PORT
+            value: "0.0.0.0:8082"
+          {{- if .Values.api.realIPHeader }}
+          - name: APP_REAL_IP_HEADER
+            value: {{ .Values.api.realIPHeader }}
+          {{- end }}
+
+          #
+          # Config
+          #
+          - name: APP_ROUTE_CONFIG
+            value: /var/safesurfer/config/routes-config.yaml
+          - name: APP_STRINGS_OVERRIDE_FILE
+            value: /app/res/strings-override.yaml
+          - name: APP_REMOTE_AUTH_DURATION
+            value: {{ .Values.api.accounts.remoteAuthTimeout }}
+          - name: APP_JWT_DURATION_VALIDATE_2FA
+            value: {{ .Values.api.accounts.twofactor.signinTime }}
+          - name: APP_JWT_DURATION_NORMAL
+            value: {{ .Values.api.accounts.standardTokenExpiryTime }}
+          - name: APP_JWT_DURATION_EXTENDED
+            value: {{ .Values.api.accounts.extendedTokenExpiryTime }}
+          - name: APP_2FA_ROLE_NAME
+            value: complete-twofactor
+          - name: APP_TOTP_ISSUER_NAME
+            value: {{ .Values.api.accounts.twofactor.issuerName }}
+          - name: APP_TOTP_CONFIRMATION_TIME
+            value: {{ .Values.api.accounts.twofactor.registrationTime }}
+          - name: APP_QR_WIDTH
+            value: {{ .Values.api.accounts.twofactor.qrWidth | quote }}
+          - name: APP_QR_HEIGHT
+            value: {{ .Values.api.accounts.twofactor.qrHeight | quote }}
+          - name: APP_ROUTER_PLACEHOLDER_NAME
+            value: {{ .Values.api.devices.routerPlaceholderName | quote }}
+          - name: APP_ERASE_HISTORY_ON_DELETE
+            value: {{ and .Values.api.accounts.clearHistoryOnDelete (or .Values.clickhouse.external.enabled .Values.clickhouse.internal.enabled) | quote }}
+          - name: APP_QR_TOKEN_LENGTH
+            value: {{ .Values.api.accounts.qrAuth.tokenLength | quote }}
+          - name: APP_QR_TOKEN_VALIDITY_DURATION
+            value: {{ .Values.api.accounts.qrAuth.tokenValidityDuration }}
+            
+          #
+          # Web push data
+          #
+          {{ if .Values.api.notifications.enabled }}
+          - name: WEB_PUSH_EMAIL
+            value: {{ .Values.api.notifications.email }}
+          - name: WEB_PUSH_VAPID_PUBLIC_KEY
+            value: {{ .Values.api.notifications.vapidPublicKey }}
+          - name: WEB_PUSH_VAPID_PRIVATE_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-web-push-secret
+                key: private
+          {{ end }}
+
+          # Give google libraries location of service account
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /var/safesurfer/secrets/gcp-service-account.json
+
+          #
+          # Name of the bucket to store screencast images in
+          #
+          - name: GCP_IMAGE_STORAGE_BUCKET_NAME
+            value: {{ .Values.api.screencasts.gcpBucketName }}
+
+          #
+          # Managed accounts setup
+          #
+          - name: APP_FORCE_TWO_STEP_ON_UNKNOWN_IP_FIELD
+            value: {{ .Values.api.accounts.forceEmailOtpOnUnknownIpField }}
+          - name: APP_EMAIL_OTP_VALIDITY_DURATION
+            value: {{ .Values.api.accounts.emailOtpValidityDuration }}
+          - name: APP_EMAIL_OTP_MAX_TRIES
+            value: {{ .Values.api.accounts.emailOtpMaxTries | quote }}
+          - name: APP_MANAGED_ACCOUNTS
+            value: {{ .Values.api.accounts.managed | quote }}
+          - name: APP_NEW_ACCOUNT_POLICY
+            value: {{ .Values.api.accounts.newAccountPolicy | quote }}
+          - name: APP_SIGNON_RATE_LIMIT_START
+            value: {{ .Values.api.accounts.signonRateLimit.startDuration }}
+          - name: APP_SIGNON_RATE_LIMIT_END
+            value: {{ .Values.api.accounts.signonRateLimit.endDuration }}
+          - name: APP_SIGNON_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.signonRateLimit.max | quote }}
+          - name: APP_NEED_APPROVAL_ROLE_NAME
+            value: approval-required
+          - name: APP_VERIFY_EMAIL_ROLE_NAME
+            value: verify-email
+          - name: APP_MAX_KEY_VALUE_LENGTH
+            value: {{ .Values.api.accounts.data.maxValueLength | quote }}
+          - name: APP_USING_FACING_DATA_KEYS
+            value: '{{- range $key := .Values.api.accounts.data.visibleKeys }}{{ $key }},{{- end }}'
+          - name: APP_EDITABLE_DATA_KEYS
+            value: '{{- range $key := .Values.api.accounts.data.editableKeys }}{{ $key }},{{- end }}'
+
+          #
+          # Chargebee API details
+          #
+          - name: APP_CHARGEBEE_PRODUCT_CATALOG_2
+            value: {{ .Values.api.accounts.chargebee.productCatalog2 | quote }}
+          {{ if .Values.api.accounts.chargebee.site }}
+          - name: CHARGEBEE_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-chargebee-secrets
+                key: api-key
+          - name: CHARGEBEE_SITE
+            value: {{ .Values.api.accounts.chargebee.site }}
+          # The chargebee plan ID to give the user a trial of initially.
+          - name: CHARGEBEE_TRIAL_PLAN
+            value: {{ .Values.api.accounts.chargebee.defaultPlan }}
+          # The fallback country code for chargebee plans
+          - name: CHARGEE_FALLBACK_COUNTRY
+            value: {{ .Values.api.accounts.chargebee.fallbackCountry }}
+          # Name of the extradevices addon
+          - name: CHARGEBEE_EXTRADEVICES_ADDON
+            value: {{ .Values.api.accounts.chargebee.extraDevicesAddonName }}
+          # Config for extradevices addon for each plan
+          {{- range $addonConfig := .Values.api.accounts.chargebee.extraDevicesAddonConfig }}
+          - name: CHARGEBEE_PLAN_{{ $addonConfig.plan | upper }}_ADDON_{{ $.Values.api.accounts.chargebee.extraDevicesAddonName | upper }}_MAX_QUANTITY
+            value: {{ $addonConfig.maxQuantity | quote }}
+          - name: CHARGEBEE_PLAN_{{ $addonConfig.plan | upper }}_ADDON_{{ $.Values.api.accounts.chargebee.extraDevicesAddonName | upper }}_BASE_QUANTITY
+            value: {{ $addonConfig.baseQuantity | quote }}
+          {{- end }}
+          {{ end }}
+          # Config for formatting pricing
+          {{- if .Values.api.accounts.chargebee.currencySymbols }}
+          - name: CHARGEBEE_CURRENCY_SYMBOLS_MAP
+            value: {{ .Values.api.accounts.chargebee.currencySymbols | toJson | quote }}
+          {{- end }}
+          {{- if .Values.api.accounts.chargebee.gstMultipliers }}
+          - name: CHARGEBEE_COUNTRY_GST_MAP
+            value: {{ .Values.api.accounts.chargebee.gstMultipliers | toJson | quote }}
+          {{- end }}
+          {{- if .Values.api.accounts.chargebee.webhookPassword }}
+          - name: APP_USER_SUBSCRIPTION_WEBHOOK_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-chargebee-webhook
+                key: password
+          {{- end }}
+          - name: APP_SUBSCRIPTION_RPM
+            value: {{ .Values.api.accounts.chargebee.perUserRpm | quote }}
+          
+          #
+          # The base URL of the frontend
+          #
+          - name: MY_BASE_URL
+            value: http://{{ .Values.frontend.ingress.host }}
+
+          #
+          # Config for generating apple "mobileconfig" files:
+          #
+          - name: APPLE_MOBILECONFIG_DOH_ADDRESSES
+            value: {{ .Values.api.devices.appleMobileConfig.dohAddresses | quote }}
+          - name: APPLE_MOBILECONFIG_CONTENT_PAYLOAD_IDENTIFIER
+            value: {{ .Values.api.devices.appleMobileConfig.payloadContentIdentifier }}
+          - name: APPLE_MOBILECONFIG_DOH_HOST
+            value: {{ .Values.api.devices.appleMobileConfig.dohHost }}
+          - name: APPLE_MOBILECONFIG_PAYLOAD_DESCRIPTION
+            value: {{ .Values.api.devices.appleMobileConfig.description }}
+          - name: APPLE_MOBILECONFIG_PAYLOAD_DISPLAY_NAME
+            value: {{ .Values.api.devices.appleMobileConfig.name }}
+          - name: APPLE_MOBILECONFIG_PAYLOAD_IDENTIFIER
+            value: {{ .Values.api.devices.appleMobileConfig.payloadIdentifier }}
+
+          #
+          # Config for google play subscriptions.
+          #
+          {{- if and .Values.api.accounts.googlePlay.enabled (not .Values.api.accounts.managed) }}
+          - name: APP_RTDN_ENABLED
+            value: 'true'
+          - name: APP_RTDN_PROJECT_ID
+            value: {{ required "RTDN Project ID required" .Values.api.accounts.googlePlay.rtdnProjectID }}
+          - name: APP_RTDN_SUBSCRIPTION_ID
+            value: {{ required "RTDN subscription ID required" .Values.api.accounts.googlePlay.rtdnSubscriptionID }}
+          - name: APP_GOOGLE_PLAY_APPLICATION_ID
+            value: {{ required "Google Play Application ID required" .Values.api.accounts.googlePlay.applicationID }}
+          - name: APP_PLAY_DEV_API_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-android-publisher-secrets
+                key: clientid
+          - name: APP_PLAY_DEV_API_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-android-publisher-secrets
+                key: clientsecret
+          - name: APP_PLAY_DEV_API_REFRESH_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-android-publisher-secrets
+                key: refreshtoken
+          {{- end }}
+
+          - name: APP_INSIGHTS_PRIORITY_FACTOR
+            value: {{ .Values.api.insights.factors.priority | quote }}
+          - name: APP_INSIGHTS_BEFORE_FACTOR
+            value: {{ .Values.api.insights.factors.before | quote }}
+          - name: APP_INSIGHTS_AFTER_FACTOR
+            value: {{ .Values.api.insights.factors.after | quote }}
+          - name: APP_INSIGHTS_CHANGE_FACTOR
+            value: {{ .Values.api.insights.factors.change | quote }}
+
+          - name: APP_I_WANT_IPINFO_CONF_FILE
+            value: /var/safesurfer/ipinfo/ipinfo.yaml
+          
+        ports:
+          - containerPort: {{ .Values.api.port }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.api.port }}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 1
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.api.resources | nindent 10 }}
+        # Mount the service account token as a file, plus resources
+        # and other config.
+        volumeMounts:
+          - name: routes-config
+            mountPath: /var/safesurfer/config/routes-config.yaml
+            subPath: routes-config.yaml
+          - name: pq-emptydir
+            mountPath: /base
+          - name: resources
+            mountPath: /app/res/
+        {{ if .Values.api.screencasts.enabled }}
+          - name: gcp-service-account
+            mountPath: /var/safesurfer/secrets
+        {{ end }}
+        {{- if .Values.api.ipInfoProvider }}
+          - name: ipinfo
+            mountPath: /var/safesurfer/ipinfo
+        {{- end }}
+---
+#
+# Create the service
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    {{- with .Values.api.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.api.isGCPNEG }}
+    cloud.google.com/neg: '{"exposed_ports": {"{{ .Values.api.svcPort }}":{}}}'
+    {{- end }}
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: {{ .Values.api.svcPort }}
+    targetPort: {{ .Values.api.port }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+---
+#
+# Create the service
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" `api` .nameOverride .Values.api.nameOverride)  }}-admin-internal
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    {{- with .Values.api.adminSvcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - port: 80
+    targetPort: {{ required "API admin port required" .Values.api.adminPort }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+---
+#
+# Horizontal pod autoscaler.
+#
+{{ if .Values.api.hpa.enabled }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  minReplicas: {{ .Values.api.hpa.minReplicas }}
+  maxReplicas: {{ .Values.api.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.api.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.api.hpa.targetAverageCPUUtilization }}
+{{ end }}
+---
+#
+# Pod disruption budget.
+#
+{{ if .Values.api.pdb.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+{{ end }}
+---
+{{ if .Values.api.ingress.enabled }}
+#
+# Ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    {{ if .Values.api.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.api.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.api.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.api.ingress.host }}
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.api.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+            port:
+              number: {{ .Values.api.svcPort }}
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Values.api.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingress.host) "Values" .Values) }}
+{{- end }}
+---
+{{ if .Values.api.adminIngress.enabled }}
+#
+# Ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-admin
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    {{- if .Values.api.adminIngress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.adminIngress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.api.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.api.adminIngress.host }}
+    {{- if .Values.api.adminIngress.tls.secretName }}
+    secretName: {{ .Values.api.adminIngress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-admin
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-admin-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.api.adminIngress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-admin-internal
+            port:
+              number: 80
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Values.api.adminIngress.tls "Release" .Release "name" (printf "%s-admin" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) )) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.adminIngress.host) "Values" .Values) }}
+{{- end }}
+#
+# Another ingress with custom TLS, if enabled
+#
+{{- if .Values.api.extraIngress.enabled }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-extracert
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+data:
+  tls.crt: {{ required "Need API extra ingress cert" .Values.api.extraIngress.cert | b64enc | quote }}
+  tls.key: {{ required "Need API extra ingress key" .Values.api.extraIngress.key | b64enc | quote }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-extra-ingress
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    {{ if .Values.api.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.api.extraIngress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.extraIngress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.api.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.api.extraIngress.host }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-extracert
+  rules:
+  - host: {{ .Values.api.extraIngress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+            port:
+              number: {{ .Values.api.svcPort }}
+{{- end }}
+{{ end }}

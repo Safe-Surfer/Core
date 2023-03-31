@@ -1,0 +1,24 @@
+{{- define "emailEnvs" }}
+- name: APP_EMAIL_BUTTON_HOVER_COLOR
+  value: {{ .Values.api.emails.theme.buttonHoverColor | quote }}
+- name: APP_EMAIL_HEADER_IMAGE_URL
+  value: {{ .Values.api.emails.theme.headerImageUrl | quote }}
+- name: APP_EMAIL_BUTTON_COLOR
+  value: {{ .Values.api.emails.theme.buttonColor | quote }}
+- name: APP_EMAIL_BRAND_NAME
+  value: {{ .Values.api.emails.theme.brandName | quote }}
+- name: APP_EMAIL_SUPPORT_URL
+  value: {{ .Values.api.emails.theme.supportUrl | quote }}
+- name: APP_EMAIL_SITE_URL
+  value: {{ .Values.api.emails.theme.siteUrl | quote }}
+- name: APP_EMAIL_SITE_DOMAIN
+  value: {{ .Values.api.emails.theme.siteDomain | quote }}
+- name: APP_EMAIL_BUTTON_TEXT_COLOR
+  value: {{ .Values.api.emails.theme.buttonTextColor | quote }}
+- name: APP_EMAIL_PLAN_NAME
+  value: {{ .Values.api.emails.theme.planName | quote }}
+- name: APP_EMAIL_HEADER_BACKGROUND_COLOR
+  value: {{ .Values.api.emails.theme.headerBackgroundColor | quote }}
+- name: APP_EMAIL_BACKGROUND_COLOR
+  value: {{ .Values.api.emails.theme.backgroundColor | quote }}
+{{- end }}

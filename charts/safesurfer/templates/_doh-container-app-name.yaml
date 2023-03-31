@@ -1,0 +1,1 @@
+{{- define "dohContainerAndAppName" }}{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}safesurfer-doh{{- else }}{{- include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}{{- end }}{{- end }}

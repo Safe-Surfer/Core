@@ -1,0 +1,70 @@
+{{- if and .Values.redis.enabled .Values.redis.internal.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# The namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.redis.namespace }}
+{{- end }}
+---
+#
+# The statefulset.
+#
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+  name: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.redis.namespace) }}
+spec:
+  replicas: 1
+  serviceName: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+    spec:
+      containers:
+      - image: redis:6.2.7-alpine
+        imagePullPolicy: IfNotPresent
+        name: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.redis.internal.resources | nindent 10 }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+#
+# Create a headless service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}-svc
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.redis.namespace) }}
+  {{- if .Values.redis.internal.serviceAnnotations }}
+  annotations:
+    {{- toYaml .Values.redis.internal.serviceAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.redis.internal.serviceType }}
+  ports:
+    - port: 6379
+      name: redis
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride) }}
+  {{- if .Values.redis.internal.serviceAllowedSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- toYaml .Values.redis.internal.serviceAllowedSourceRanges | nindent 2 }}
+  {{- end }}
+{{- end }}

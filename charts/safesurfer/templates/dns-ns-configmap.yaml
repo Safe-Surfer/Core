@@ -1,0 +1,189 @@
+{{- if .Values.dns.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+data:
+  timezone: {{ .Values.dns.timezone }}
+  recursor.conf: |-
+    #################################
+    # allow-from	If set, only allow these comma separated netmasks to recurse
+    #
+    allow-from={{ required "allowFrom required" .Values.dns.dns.allowFrom }}
+
+    #################################
+    # any-to-tcp	Answer ANY queries with tc=1, shunting to TCP
+    #
+    any-to-tcp=yes
+
+    #################################
+    # carbon-interval	Number of seconds between carbon (graphite) updates
+    #
+    # carbon-interval=30
+    carbon-interval=30
+
+    #################################
+    # daemon	Operate as a daemon
+    #
+    daemon=no
+
+    #################################
+    # disable-packetcache	Disable packetcache
+    #
+    # We need to have the packetcache disabled as lua needs to answer every request
+    disable-packetcache=yes
+
+    #################################
+    # disable-syslog	Disable logging to syslog, useful when running inside a supervisor that logs stdout
+    #
+    disable-syslog=yes
+
+    #################################
+    # distribution-load-factor	The load factor used when PowerDNS is distributing queries to worker threads
+    #
+    # distribution-load-factor=0.0
+    # By default UDP queries are hash-distributed to threads. This doesn't work
+    # very well if a single domain is being hit a lot so use this to spread the
+    # load over all the threads above if needed.
+    distribution-load-factor=1
+
+    #################################
+    # distribution-pipe-buffer-size	Size in bytes of the internal buffer of the pipe used by the distributor to pass incoming queries to a worker thread
+    #
+    # distribution-pipe-buffer-size=0
+
+    #################################
+    # distributor-threads	Launch this number of distributor threads, distributing queries to other threads
+    #
+    # Use this number of threads listening on the main socket. These are mostly used for answering TCP connections
+    distributor-threads={{ .Values.dns.dns.distributorThreads }}
+
+    #################################
+    # local-address	IP addresses to listen on, separated by spaces or commas. Also accepts ports.
+    #
+    # local-address=127.0.0.1
+    local-address=0.0.0.0
+
+    #################################
+    # local-port	port to listen on
+    #
+    local-port={{ .Values.dns.dns.bindPort }}
+
+    #################################
+    # loglevel	Amount of logging. Higher is more. Do not set below 3
+    #
+    loglevel={{ .Values.dns.dns.logLevel }}
+
+    #################################
+    # lua-config-file	More powerful configuration options
+    #
+    lua-config-file=/etc/pdns/config.lua
+
+    #################################
+    # lua-dns-script	Filename containing an optional 'lua' script that will be used to modify dns answers
+    #
+    lua-dns-script=/etc/pdns/lua/pdns.lua
+
+    #################################
+    # pdns-distributes-queries	If PowerDNS itself should distribute queries over threads
+    #
+    pdns-distributes-queries=yes
+
+    #################################
+    # setgid	If set, change group id to this gid for more security
+    #
+    setgid=recursor
+
+    #################################
+    # setuid	If set, change user id to this uid for more security
+    #
+    setuid=recursor
+
+    #################################
+    # socket-dir	Where the controlsocket will live, /var/run/pdns-recursor when unset and not chrooted
+    #
+    socket-dir=/var/run
+    #################################
+    # statistics-interval	Number of seconds between printing of recursor statistics, 0 to disable
+    #
+    statistics-interval=30
+
+    #################################
+    # threads	Launch this number of threads
+    #
+    # These are used for handling UDP questions and doing remote lookups
+    threads={{ .Values.dns.dns.threads }}
+    
+    #################################
+    # version-string	string reported on version.pdns or version.bind
+    #
+    # Disabled for security
+    version-string=
+
+    #################################
+    # webserver	Start a webserver (for REST API)
+    #
+    webserver=yes
+
+    #################################
+    # webserver-address	IP Address of webserver to listen on
+    #
+    webserver-address=0.0.0.0
+
+    #################################
+    # webserver-port	Port of webserver to listen on
+    #
+    webserver-port=8082
+
+    #################################
+    # webserver-allow-from These IPs and subnets are allowed to access the webserver. Note that specifying an IP address without a netmask uses an implicit netmask of /32 or /128.
+    #
+    webserver-allow-from=0.0.0.0/0,::/0
+  basic-setup.rpz: |-
+    $TTL    604800
+    @       IN      SOA     localhost. root.localhost. (
+                            1497402003      ; Serial
+                            604800         ; Refresh
+                              86400         ; Retry
+                            2419200         ; Expire
+                            604800        ; Negative Cache TTL
+                            )
+    @       IN      NS      localhost.
+
+    {{- if .Values.dns.dns.blockFirefoxDOH }}
+    ; NXDOMAIN for firefox DNS over HTTPS - flag to disable DoH for anyone using this server
+    use-application-dns.net CNAME .
+    {{- end }}
+  {{- if .Values.dns.dns.enabled }}
+  status.yaml: |-
+    targets:
+    - name: dns
+      healthChecks:
+      - type: DNS
+        spec:
+          address: '127.0.0.1'
+          port: {{ .Values.dns.dns.bindPort }}
+          proto: udp
+          domain: {{ .Values.dns.dns.healthCheck.testDomain }}
+          timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+      - type: DNS
+        spec:
+          address: '127.0.0.1'
+          port: {{ .Values.dns.dns.bindPort }}
+          proto: tcp
+          domain: {{ .Values.dns.dns.healthCheck.testDomain }}
+          timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+    {{- if .Values.dns.dns.sidecarContainers.healthCheck.customTargets }}
+    {{ toYaml .Values.dns.dns.sidecarContainers.healthCheck.customTargets | nindent 4 }}
+    {{- end }}
+  {{- end }}
+
+{{- end }}

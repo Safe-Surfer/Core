@@ -1,0 +1,50 @@
+#
+# Create a cronjob to take backups to an s3 bucket if enabled.
+#
+{{ if and .Values.db.inCluster.enabled .Values.db.backups.genericS3.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
+spec:
+  schedule: {{ .Values.db.backups.genericS3.schedule }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-gitlab-registry
+          containers:
+            - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
+              image: registry.gitlab.com/safesurfer/core/postgres/generic-s3-backup:1.0.0
+              command:
+              - bash
+              args:
+              - -c
+              # First set up gsutil with auth from environment variables. Then, take a pg_dump backup
+              # and pipe to a file in an S3 bucket.
+              - >
+                pg_dump | aws --endpoint-url $ENDPOINT_URL s3 cp - s3://$BUCKET_NAME/backup-$(date -I).sql
+              env:
+              # S3 variables
+              - name: ENDPOINT_URL
+                value: {{ .Values.db.backups.genericS3.endpointURL }}
+              - name: BUCKET_NAME
+                value: {{ .Values.db.backups.genericS3.bucket }}
+              - name: AWS_ACCESS_KEY_ID
+                value: {{ .Values.db.backups.genericS3.accessKeyID }}
+              - name: AWS_SECRET_ACCESS_KEY
+                value: {{ .Values.db.backups.genericS3.accessKeySecret }}
+              # DB connection
+              {{ include "dbEnvs" . | indent 14 }}
+              resources:
+                {{- toYaml .Values.db.backups.genericS3.resources | nindent 16 }}
+          restartPolicy: OnFailure
+{{ end }}

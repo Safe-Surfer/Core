@@ -1,0 +1,1 @@
+{{- define "dnscryptContainerAndAppName" }}{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}safesurfer-dnsdist{{- else }}{{- include "name" (dict "Release" .Release "name" "dnscrypt" "nameOverride" .Values.dns.dnscrypt.nameOverride) }}{{- end }}{{- end }}

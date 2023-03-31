@@ -1,0 +1,102 @@
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+# Create the namespace for DB resources.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.db.namespace }}
+{{- end }}
+---
+# Custom storage class (if applicable)
+{{ if and .Values.db.inCluster.volume.customStorageClass.enabled .Values.db.inCluster.volume.customStorageClass.spec.metadata.name }}
+{{ toYaml .Values.db.inCluster.volume.customStorageClass.spec }}
+{{ end }}
+---
+# Only if we use an in-cluster DB
+{{ if .Values.db.inCluster.enabled }}
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: {{ .Values.db.inCluster.name }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
+spec:
+  # Create the user/db for the application
+  users:
+    {{ .Values.db.inCluster.pguser }}:
+    - superuser
+    - createdb
+  databases:
+    {{ .Values.db.inCluster.pgdb }}: {{ .Values.db.inCluster.pguser }}
+
+  ## The following must be specified, so aren't configurable
+  enableConnectionPooler: true
+  teamId: {{ .Values.db.inCluster.pguser }}
+  connectionPooler:
+    mode: session
+    ## To avoid issues with overriding resources in values.yaml, specify them
+    ## here instead of extraSpec.
+    resources:
+      requests:
+        cpu: {{ .Values.db.inCluster.connectionPooler.cpuRequest | quote }}
+        memory: {{ .Values.db.inCluster.connectionPooler.memoryRequest | quote }}
+      limits:
+        cpu: {{ .Values.db.inCluster.connectionPooler.cpuLimit | quote }}
+        memory: {{ .Values.db.inCluster.connectionPooler.memoryLimit | quote }}
+
+    # Check we don't override mode but allow extra values
+    {{ if contains "mode:" (toYaml .Values.db.inCluster.connectionPooler.extraSpec) }}
+    {{ fail "db.connectionPooler.extraSpec must not override connection pooler mode" }}
+    {{ end }}
+    {{ if contains "resources:" (toYaml .Values.db.inCluster.connectionPooler.extraSpec) }}
+    {{ fail "db.connectionPooler.extraSpec must not override connection pooler mode" }}
+    {{ end }}
+    {{- toYaml .Values.db.inCluster.connectionPooler.extraSpec | nindent 4 }}
+
+  ## To avoid issues with overriding resources in values.db.yaml, specify them
+  ## here instead of extraSpec.
+  resources:
+    requests:
+      cpu: {{ .Values.db.inCluster.cpuRequest | quote }}
+      memory: {{ .Values.db.inCluster.memoryRequest | quote }}
+    limits:
+      cpu: {{ .Values.db.inCluster.cpuLimit | quote }}
+      memory: {{ .Values.db.inCluster.memoryLimit | quote }}
+
+  ## Volume
+  volume:
+    size: {{ .Values.db.inCluster.volume.size }}
+    ## Use the custom storage class if we're using one
+    {{- if .Values.db.inCluster.volume.customStorageClass.enabled }}
+    {{- if .Values.db.inCluster.volume.customStorageClass.name }}
+    storageClass: {{ .Values.db.inCluster.volume.customStorageClass.name }}
+    {{- else }}
+    storageClass: {{ required "Custom storage class must have a name" .Values.db.inCluster.volume.customStorageClass.spec.metadata.name }}
+    {{ end }}
+    {{- end }}
+
+  ## Allow specifying the rest of the spec, but not overriding the above
+  {{ if contains "users:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override users" }}
+  {{ end }}
+  {{ if contains "databases:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override databases" }}
+  {{ end }}
+  {{ if contains "enableConnectionPooler:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override enableConnectionPooler" }}
+  {{ end }}
+  {{ if contains "teamId:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override teamId" }}
+  {{ end }}
+  {{ if contains "connectionPooler:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override connectionPooler" }}
+  {{ end }}
+  {{ if contains "resources:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override resources" }}
+  {{ end }}
+  {{ if contains "volume:" (toYaml .Values.db.inCluster.extraSpec) }}
+  {{ fail "db.extraSpec must not override volume" }}
+  {{ end }}
+
+  {{- toYaml .Values.db.inCluster.extraSpec | nindent 2 }}
+
+{{ end }}

@@ -1,0 +1,31 @@
+{{- if or .Values.categorizer.adminApp.enabled .Values.categorizer.autoCat.crawlerWorker.enabled .Values.categorizer.autoCat.classifier.enabled .Values.categorizer.autoCat.addFromDNS.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# Categorizer namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.categorizer.namespace }}
+{{- end }}
+---
+#
+# Image pull secret for all things in the categorizer namespace.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# External redis connection, if necessary.
+#
+{{ include "redisSecret" (dict "Release" .Release "Values" .Values "targetNamespace" .Values.categorizer.namespace ) }}
+{{- end }}
+{{- end }}

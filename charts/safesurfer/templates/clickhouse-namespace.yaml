@@ -1,0 +1,8 @@
+{{- if (or .Values.clickhouse.external.enabled .Values.clickhouse.internal.enabled) }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.clickhouse.namespace }}
+{{- end }}
+{{- end }}

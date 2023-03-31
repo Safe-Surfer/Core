@@ -1,0 +1,30 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.dns.enabled }}
+{{- if .Values.dns.dns.sidecarContainers.healthCheck.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dns-health-check") }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- with .Values.dns.dns.sidecarContainers.healthCheck.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.dns.dns.sidecarContainers.healthCheck.service.type }}
+  externalTrafficPolicy: Local
+  sessionAffinity: ClientIP
+  ports:
+    - port: {{ .Values.dns.dns.sidecarContainers.healthCheck.service.port }}
+      targetPort: {{ .Values.dns.dns.sidecarContainers.healthCheck.bindPort }}
+      protocol: TCP
+      name: tcp
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    app: {{ include "dnsContainerAndAppName" . }}
+{{- end }}
+{{- end }}
+{{- end }}

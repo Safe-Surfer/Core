@@ -1,0 +1,66 @@
+{{- if and .Values.alphasoc.enabled .Values.alphasoc.internal.enabled }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for DB connection.
+#
+{{ include "dbSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.alphasoc.namespace) }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# Secret for clickhouse connection
+#
+{{ include "clickhouseSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.alphasoc.namespace) }}
+{{- end }}
+---
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+spec:
+  schedule: {{ .Values.alphasoc.sync.schedule }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            job: alphasync
+        spec:
+          imagePullSecrets:
+          - name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-gitlab-registry
+          automountServiceAccountToken: false
+          containers:
+          - name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync
+            image: {{ .Values.alphasoc.sync.image }}
+            resources:
+              {{- toYaml .Values.alphasoc.sync.resources | nindent 14 }}
+            env:
+            - name: APP_TIMEOUT
+              value: {{ .Values.alphasoc.sync.timeouts.main }}
+            - name: APP_AE_TIMEOUT
+              value: {{ .Values.alphasoc.sync.timeouts.alphasoc }}
+            - name: APP_DB_TIMEOUT
+              value: {{ .Values.alphasoc.sync.timeouts.postgres }}
+            - name: APP_CH_TIMEOUT
+              value: {{ .Values.alphasoc.sync.timeouts.clickhouse }}
+            - name: APP_CLICKHOUSE_READ_TIMEOUT
+              value: {{ .Values.alphasoc.sync.timeouts.clickhouse }}
+            - name: APP_ALPHASOC_AE_BASE_URL
+              value: http://{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-svc.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}.svc:{{ .Values.alphasoc.internal.svcPort }}
+            - name: APP_ALPHASOC_AE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-key
+                  key: key
+            {{ include "dbEnvs" . | indent 12 }}
+            {{ include "clickhouseEnvs" . | indent 12 }}
+            {{ include "loggingEnvs" (dict "level" .Values.alphasoc.sync.logLevel) | indent 12 }}
+          restartPolicy: Never
+{{- end }}

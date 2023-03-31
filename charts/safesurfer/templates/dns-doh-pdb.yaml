@@ -1,0 +1,30 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.doh.enabled }}
+{{- if .Values.dns.doh.deployment }}
+{{- if .Values.dns.doh.podDisruptionBudget.enabled }}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minAvailable: {{ .Values.dns.doh.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "dohContainerAndAppName" . }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

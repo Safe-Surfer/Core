@@ -1,0 +1,9 @@
+# {{ if .Values.blockpage.enabled }}
+# Categorizer and ingress must be enabled
+# {{ if not .Values.categorizer.adminApp.ingress.enabled }}
+#   {{ fail "Categorizer ingress must be enabled" }}
+# {{ end }}
+# {{ if not .Values.categorizer.adminApp.enabled }}
+#   {{ fail "Categorizer must be enabled" }}
+# {{ end }}
+# {{ end }}

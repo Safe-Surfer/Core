@@ -1,0 +1,8 @@
+# Considerations for production
+- Make sure to enable [monitoring](./monitoring.md) and monitor the deployments for errors and resource usage. You can create alerts using [prometheus alert manager](https://prometheus.io/docs/alerting/latest/overview/) which is installed if following the instructions on the [monitoring](./monitoring.md) guide.
+- Enable [Horizontal Pod Autoscalers](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) and [Pod Disruption Budgets](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#pod-disruption-budgets) where supported.
+- Regularly rotate keys such as the `categorizer.adminApp.admin.password` or `api.adminSecret`.
+- When upgrading a release, compare the generated manifests to what they were before to prevent accidental changes. You can do this easily using the [Helm diff](https://github.com/databus23/helm-diff) plugin.
+- Deploy to a namespace using the Helm `--namespace` argument.
+- When managing multiple deployments, use a different release name and/or namespace for each to prevent applying changes to the wrong deployment.
+- If using non-managed users, consider setting a `api.accounts.newAccountPolicy` and `api.accounts.forceEmailOtpOnUnknownIpField`. You can set `forceEmailOtpOnUnknownIpField` to `IP` to force two factor authentication via email when the user attempts to sign in from a new IP without having to set up an ipinfo provider.

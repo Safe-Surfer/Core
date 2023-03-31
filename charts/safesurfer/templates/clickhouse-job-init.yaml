@@ -1,0 +1,24 @@
+{{- if (or .Values.clickhouse.external.enabled .Values.clickhouse.internal.enabled) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Always run
+  name: {{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}-init-{{ randAlphaNum 10 | lower }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}-gitlab-registry
+      containers:
+      - name: clickhouse-config
+        image: {{ .Values.clickhouse.schemaVersion }}
+        command:
+        - /bin/bash
+        args:
+        - -c
+        - clickhouse-client --host $APP_CLICKHOUSE_HOST --port $APP_CLICKHOUSE_PORT --password $APP_CLICKHOUSE_PASSWORD --user $APP_CLICKHOUSE_USERNAME --database $APP_CLICKHOUSE_DATABASE {{ if and .Values.clickhouse.external.enabled .Values.clickhouse.external.connection.secure }}--secure{{ end }} --queries-file /app/schema.sql
+        env:
+        {{ include "clickhouseEnvs" . | indent 8 }}
+      restartPolicy: OnFailure
+{{- end }}

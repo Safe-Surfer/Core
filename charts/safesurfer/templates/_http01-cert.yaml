@@ -1,0 +1,66 @@
+{{- define "http01Cert" }}
+---
+#
+# Cluster issuer.
+#
+apiVersion: cert-manager.io/v1
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+kind: ClusterIssuer
+{{- else }}
+kind: Issuer
+{{- end }}
+metadata:
+  {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+  name: letsencrypt-prod-{{ .name }}
+  {{- else }}
+  name: {{ .name }}-cert
+  {{- end }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .namespace) }}
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: {{ .Values.certmanager.letsencrypt.email }}
+    privateKeySecretRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: letsencrypt-prod-{{ .name }}
+      {{- else }}
+      name: {{ .name }}-cert
+      {{- end }}
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+      selector:
+        dnsNames:
+        {{- toYaml .dnsNames | nindent 8 }}
+---
+#
+# Certificate.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+  name: letsencrypt-prod-{{ .name }}
+  {{- else }}
+  name: {{ .name }}-cert
+  {{- end }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .namespace) }}
+spec:
+  {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+  secretName: letsencrypt-prod-{{ .name }}
+  {{- else }}
+  secretName: {{ .name }}-cert
+  {{- end }}
+  issuerRef:
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    name: letsencrypt-prod-{{ .name }}
+    kind: ClusterIssuer
+    {{- else }}
+    name: {{ .name }}-cert
+    kind: Issuer
+    {{- end }}
+    group: cert-manager.io
+  dnsNames:
+  {{- toYaml .dnsNames | nindent 2 }}
+{{- end }}

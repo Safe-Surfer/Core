@@ -1,0 +1,308 @@
+{{- if .Values.monitoring.enabled }}
+{{- if .Values.protocolchecker.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{ .Values.monitoring.dashboardLabels | toYaml | nindent 4 }}
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-dashboard
+  namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+data:
+  {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}.json: |-
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "Prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {},
+              "links": []
+            },
+            "overrides": []
+          },
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "hiddenSeries": false,
+          "id": 6,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "percentage": false,
+          "pluginVersion": "7.1.1",
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"}[5m]) * 100",
+              "interval": "",
+              "legendFormat": "{{ `{{ pod }}` }}",
+              "refId": "A"
+            },
+            {
+              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"} * 100)",
+              "interval": "",
+              "legendFormat": "CPU Request",
+              "refId": "B"
+            },
+            {
+              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"} * 100)",
+              "interval": "",
+              "legendFormat": "CPU Limit",
+              "refId": "C"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "CPU Usage %",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "$$hashKey": "object:92",
+              "format": "percent",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "$$hashKey": "object:93",
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "Prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {},
+              "links": []
+            },
+            "overrides": []
+          },
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "hiddenSeries": false,
+          "id": 4,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "percentage": false,
+          "pluginVersion": "7.1.1",
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"}",
+              "interval": "",
+              "legendFormat": "{{ `{{ pod }}` }}",
+              "refId": "A"
+            },
+            {
+              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"})",
+              "interval": "",
+              "legendFormat": "Memory Request",
+              "refId": "B"
+            },
+            {
+              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"})",
+              "interval": "",
+              "legendFormat": "Memory Limit",
+              "refId": "C"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Memory Usage Bytes",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "$$hashKey": "object:143",
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "$$hashKey": "object:144",
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "datasource": "Loki",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {}
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "id": 2,
+          "options": {
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}\", container=\"{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}\"}",
+              "refId": "A"
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Logs",
+          "type": "logs"
+        }
+      ],
+      "schemaVersion": 26,
+      "style": "dark",
+      "tags": [],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "5s",
+          "10s",
+          "30s",
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "2h",
+          "1d"
+        ]
+      },
+      "timezone": "",
+      "title": "{{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}",
+      "uid": "w5AkaSEMk",
+      "version": 1
+    }
+{{- end }}
+{{- end }}

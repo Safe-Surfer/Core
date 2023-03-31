@@ -1,0 +1,366 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.clickhoused.internal.enabled }}
+
+# Clickhouse secret, if needed
+{{- if .Values.dns.clickhoused.internal.backend.clickhouse.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+{{ include "clickhouseSecret" (dict "Values" .Values "Release" .Release "targetNamespace" .Values.dns.namespace) }}
+{{- end }}
+{{- end }}
+
+# HTTP ingress secret (for backend) if needed.
+{{- if .Values.dns.clickhoused.internal.backend.http.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-backend
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+type: Opaque
+data:
+  secret: {{ required "Clickhoused http backend requires a secret" .Values.dns.clickhoused.internal.backend.http.secret | b64enc | quote }}
+{{- end }}
+
+# HTTP ingress secret (for frontend) if needed.
+{{- if not .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-frontend
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+type: Opaque
+data:
+  secret: {{ required "Clickhoused http frontend requires a secret" .Values.dns.clickhoused.internal.frontend.http.secret | b64enc | quote }}
+{{- end }}
+
+# Alphasoc API key secret if needed.
+{{- if .Values.dns.clickhoused.internal.backend.alphasoc.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-alphasoc
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+type: Opaque
+data:
+  key: {{ required "alphasoc api key required" .Values.alphasoc.apiKey | b64enc | quote }}
+{{- end }}
+
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# The redis secret, if any.
+#
+{{ include "redisSecret" (dict "Release" .Release "Values" .Values "targetNamespace" .Values.api.namespace ) }}
+{{- end }}
+
+# The deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  replicas: {{ .Values.dns.clickhoused.internal.replicas }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-clickhoused
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+        app: safesurfer-clickhoused
+        {{- else }}
+        app: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+        {{- end }}
+        {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
+    {{- if .Values.dns.labels }}
+    {{- with .Values.dns.labels }}
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+        image: {{ .Values.dns.clickhoused.internal.image }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - all
+        ports:
+        - name: clickhoused
+          {{- if .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+          containerPort: {{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
+          protocol: UDP
+          {{- else }}
+          containerPort: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
+          protocol: TCP
+          {{- end }}
+        env:
+        {{ include "loggingEnvs" (dict "level" .Values.dns.clickhoused.internal.logLevel) | indent 8 }}
+        - name: APP_HTTP_BACKEND
+          value: {{ .Values.dns.clickhoused.internal.backend.http.enabled | quote }}
+        - name: APP_DB_BACKEND
+          value: {{ .Values.dns.clickhoused.internal.backend.clickhouse.enabled | quote }}
+        - name: APP_AE_BACKEND
+          value: {{ .Values.dns.clickhoused.internal.backend.alphasoc.enabled | quote }}
+        # UDP frontend specific
+        {{- if .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+        - name: APP_FRONTEND
+          value: udp
+        - name: APP_PORT
+          value: 0.0.0.0:{{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
+        - name: APP_MAX_BATCH_SIZE
+          value: {{ .Values.dns.clickhoused.internal.frontend.udp.maxBatchSize | quote }}
+        - name: APP_MAX_BATCH_WAIT
+          value: {{ .Values.dns.clickhoused.internal.frontend.udp.maxBatchWait }}
+        {{- else }}
+        # HTTP frontend specific
+        - name: APP_HTTP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-frontend
+              key: secret
+        - name: APP_PORT
+          value: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort | quote }}
+        {{- end }}
+        {{- if .Values.dns.clickhoused.internal.backend.clickhouse.enabled}}
+        # Clickhouse backend specific
+        {{ include "clickhouseEnvs" . | indent 8 }}
+        - name: APP_CLICKHOUSE_WRITE_TIMEOUT
+          value: {{ .Values.dns.clickhoused.internal.backend.clickhouse.timeout }}
+        - name: APP_SERVER_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        {{- end }}
+        {{- if .Values.dns.clickhoused.internal.backend.http.enabled }}
+        # HTTP backend specific
+        - name: APP_HTTP_INGRESS_WRITE_TIMEOUT
+          value: {{ .Values.dns.clickhoused.internal.backend.http.timeout }}
+        - name: APP_HTTP_INGRESS_BASE_URL
+          value: {{ .Values.dns.clickhoused.internal.backend.http.baseURL }}
+        - name: APP_HTTP_INGRESS_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-backend
+              key: secret
+        {{- end }}
+        # Alphasoc backend specific
+        {{- if .Values.dns.clickhoused.internal.backend.alphasoc.enabled }}
+        # {{- if not .Values.api.enabled }} {{ fail "API must be enabled for alphasoc backend" }} {{- end }}
+        - name: APP_AE_WRITE_TIMEOUT
+          value: {{ .Values.dns.clickhoused.internal.backend.alphasoc.timeout }}
+        - name: APP_AE_BASE_URL
+          value: http://{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-svc.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}.svc:{{ .Values.alphasoc.internal.svcPort }}
+        - name: APP_AE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-alphasoc
+              key: key
+        - name: APP_AE_QUOTA_WEBSOCKET_MAX_READ_SIZE
+          value: 32MB
+        {{ include "apiInternalConnection" . | indent 8 }}
+        {{ include "redisEnvs" (dict "required" true "Values" .Values "Release" .Release) | indent 8 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.dns.clickhoused.internal.resources | nindent 10 }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+
+# The HPA, if any
+{{- if .Values.dns.clickhoused.internal.hpa.enabled }}
+---
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minReplicas: {{ .Values.dns.clickhoused.internal.hpa.minReplicas }}
+  maxReplicas: {{ .Values.dns.clickhoused.internal.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ .Values.dns.clickhoused.internal.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ .Values.dns.clickhoused.internal.hpa.targetAverageCPUUtilization }}
+{{- end }}
+
+# The PDB, if any
+{{- if .Values.dns.clickhoused.internal.pdb.enabled }}
+---
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minAvailable: {{ .Values.dns.clickhoused.internal.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      app: safesurfer-clickhoused
+      {{- else }}
+      app: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+      {{- end }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+{{- end }}
+
+---
+#
+# Create the service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  {{- if and .Values.dns.clickhoused.internal.frontend.udp.enabled .Values.dns.clickhoused.internal.frontend.udp.serviceAnnotations }}
+  annotations:
+    {{- toYaml .Values.dns.clickhoused.internal.frontend.udp.serviceAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and .Values.dns.clickhoused.internal.frontend.udp.enabled .Values.dns.clickhoused.internal.frontend.udp.loadBalancerEnabled }}
+  type: LoadBalancer
+  {{- else }}
+  type: ClusterIP
+  {{- end }}
+  ports:
+  {{- if .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+  - port: {{ .Values.dns.clickhoused.internal.frontend.udp.svcPort }}
+    targetPort: {{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
+    protocol: UDP
+    name: udp
+  {{- else }}
+  - port: {{ .Values.dns.clickhoused.internal.frontend.http.svcPort }}
+    targetPort: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
+    protocol: TCP
+    name: http
+  {{- end}}
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    app: safesurfer-clickhoused
+    {{- else }}
+    app: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+    {{- end }}
+
+# Ingress/cert for clickhoused, if http is the frontend.
+{{- if not .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+---
+#
+# Issuer and cert.
+#
+{{ include "cert" (dict "cert" .Values.dns.clickhoused.internal.frontend.http.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.clickhoused.internal.frontend.http.host) "Values" .Values)}}
+---
+#
+# Create the ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "safesurfer-dns.fullname" . }}-clickhoused
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- if .Values.dns.clickhoused.internal.frontend.http.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.dns.clickhoused.internal.frontend.http.rateLimiting.rpm | quote }}
+    {{- end }}
+    {{- if .Values.dns.clickhoused.internal.frontend.http.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.dns.clickhoused.internal.frontend.http.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.dns.clickhoused.internal.frontend.http.ingressClass }}
+  tls:
+  - hosts:
+    - {{ .Values.dns.clickhoused.internal.frontend.http.host }}
+    {{- if .Values.dns.clickhoused.internal.frontend.http.tls.secretName }}
+    secretName: {{ .Values.dns.clickhoused.internal.frontend.http.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-clickhoused
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.dns.clickhoused.internal.frontend.http.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride)
+            port:
+              number: {{ .Values.dns.clickhoused.internal.frontend.http.svcPort }}
+{{- end }}
+
+{{- end }}
+{{- end }}

@@ -1,0 +1,76 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.doh.enabled }}
+{{- if .Values.dns.doh.deployment }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  replicas: {{ .Values.dns.doh.replicas }}
+{{- if .Values.dns.doh.deploymentStrategy }}
+  strategy:
+{{- with .Values.dns.doh.deploymentStrategy }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    matchLabels:
+      app: {{ include "dohContainerAndAppName" . }}
+      {{- include "safesurfer-dns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dohContainerAndAppName" . }}
+        {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
+    {{- if .Values.dns.labels }}
+    {{- with .Values.dns.labels }}
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- end }}
+      annotations:
+        domain: {{ .Values.dns.doh.host }}
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        {{- if and .Values.dns.doh.cert .Values.dns.doh.key }}
+        checksum/doh-certs: {{ include (print $.Template.BasePath "/dns-doh-certificate.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      containers:
+      {{- include "dohContainer" (dict "Values" .Values "Release" .Release "sidecar" false) | nindent 6 }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: doh-certs
+        secret:
+          {{- if .Values.dns.doh.tls.secretName }}
+          secretName: {{ .Values.dns.doh.tls.secretName }}
+          {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: letsencrypt-prod-doh
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}-cert
+          {{- end }}
+    {{- with .Values.dns.doh.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

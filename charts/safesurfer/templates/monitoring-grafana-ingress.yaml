@@ -1,0 +1,49 @@
+{{- if .Values.monitoring.enabled }}
+{{- if .Values.monitoring.ingress.enabled }}
+---
+#
+# Ingress
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride) }}
+  namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{ if .Values.monitoring.ingress.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.monitoring.ingress.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.monitoring.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.monitoring.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.monitoring.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.monitoring.ingress.host }}
+    {{- if .Values.monitoring.ingress.tls.secretName }}
+    secretName: {{ .Values.monitoring.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-ss-grafana
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.monitoring.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.monitoring.ingress.svcName }}
+            port:
+              number: {{ .Values.monitoring.ingress.svcPort }}
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Values.monitoring.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride)) "namespace" .Values.monitoring.namespace "dnsNames" (list .Values.monitoring.ingress.host) "Values" .Values ) }}
+{{- end }}
+{{- end }}

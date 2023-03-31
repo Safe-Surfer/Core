@@ -1,0 +1,10 @@
+{{- define "cert" }}
+{{- if .cert.secretName }}
+{{- else if and (not .noHttpSupport) .cert.http01 }}
+  {{- include "http01Cert" (dict "Release" .Release "name" .name "namespace" .namespace "dnsNames" .dnsNames "Values" .Values ) }}
+{{- else if .cert.custom.enabled }}
+  {{- include "customCert" (dict "cert" .cert "Release" .Release "name" .name "namespace" .namespace "Values" .Values) }}
+{{- else }}
+  {{ fail "Either http01 or custom certificate must be configured" }}
+{{- end }}
+{{- end }}

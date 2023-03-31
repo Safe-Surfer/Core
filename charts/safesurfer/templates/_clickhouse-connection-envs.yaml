@@ -1,0 +1,57 @@
+{{- define "clickhouseEnvs" }}
+{{- if .Values.clickhouse.external.enabled }}
+- name: APP_CLICKHOUSE_HOST
+  value: {{ .Values.clickhouse.external.connection.host }}
+- name: APP_CLICKHOUSE_PORT
+  value: {{ .Values.clickhouse.external.connection.port | quote }}
+- name: APP_CLICKHOUSE_USERNAME
+  valueFrom:
+    secretKeyRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: clickhouse-login
+      {{- else }}
+      name: {{ include "name" (dict "Release" .Release "name" `clickhouse` "nameOverride" .Values.clickhouse.nameOverride) }}-login
+      {{- end }}
+      key: username
+- name: APP_CLICKHOUSE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: clickhouse-login
+      {{- else }}
+      name: {{ include "name" (dict "Release" .Release "name" `clickhouse` "nameOverride" .Values.clickhouse.nameOverride) }}-login
+      {{- end }}
+      key: password
+- name: APP_CLICKHOUSE_DATABASE
+  value: {{ .Values.clickhouse.external.connection.database }}
+- name: APP_CLICKHOUSE_SECURE
+  value: {{ .Values.clickhouse.external.connection.secure | quote }}
+{{- else if .Values.clickhouse.internal.enabled }}
+- name: APP_CLICKHOUSE_HOST
+  value: {{ include "name" (dict "Release" .Release "name" `clickhouse` "nameOverride" .Values.clickhouse.nameOverride) }}-internal.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}
+- name: APP_CLICKHOUSE_PORT
+  value: '9000'
+- name: APP_CLICKHOUSE_USERNAME
+  valueFrom:
+    secretKeyRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: clickhouse-login
+      {{- else }}
+      name: {{ include "name" (dict "Release" .Release "name" `clickhouse` "nameOverride" .Values.clickhouse.nameOverride) }}-login
+      {{- end }}
+      key: username
+- name: APP_CLICKHOUSE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+      name: clickhouse-login
+      {{- else }}
+      name: {{ include "name" (dict "Release" .Release "name" `clickhouse` "nameOverride" .Values.clickhouse.nameOverride) }}-login
+      {{- end }}
+      key: password
+- name: APP_CLICKHOUSE_DATABASE
+  value: default
+- name: APP_CLICKHOUSE_SECURE
+  value: '0'
+{{- end }}
+{{- end }}

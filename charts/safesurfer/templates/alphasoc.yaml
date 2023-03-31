@@ -1,0 +1,119 @@
+{{- if .Values.alphasoc.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.alphasoc.namespace }}
+{{- end }}
+{{- if .Values.alphasoc.internal.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-key
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+type: Opaque
+data:
+  key: {{ required "alphasoc api key required" .Values.alphasoc.apiKey | b64enc | quote }}
+
+# The custom storage class.
+{{- if .Values.alphasoc.internal.persistence.storageClass }}
+---
+{{ toYaml .Values.alphasoc.internal.persistence.storageClass }}
+{{- end}}
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: alphasoc
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+spec:
+  replicas: 1
+  serviceName: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}
+  selector:
+    matchLabels:
+      app: alphasoc
+  template:
+    metadata:
+      labels:
+        app: alphasoc
+      annotations:
+        checksum/resources: {{ include (print $.Template.BasePath "/alphasoc-configmap.yaml") . | sha256sum }}
+        checksum/apiKey: {{ .Values.alphasoc.apiKey | sha256sum }}
+    spec:
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}
+      - name: key
+        secret:
+          secretName: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-key
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-gitlab-registry
+      containers:
+      - image: {{ .Values.alphasoc.internal.image }}
+        imagePullPolicy: IfNotPresent
+        args: ["-config", "/ae-config/ae.yaml"]
+        name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}
+        ports:
+        - containerPort: {{ .Values.alphasoc.internal.bindPort }}
+          name: alphasoc
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /data
+          name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-data
+        - mountPath: /ae-config
+          name: config
+        - mountPath: /ae-secrets
+          name: key
+        resources:
+          {{- toYaml .Values.alphasoc.internal.resources | nindent 10 }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      {{- if .Values.alphasoc.internal.persistence.storageClassName }}
+      storageClassName: {{ .Values.alphasoc.internal.persistence.storageClassName }}
+      {{ else if .Values.alphasoc.internal.persistence.storageClass }}
+      storageClassName: {{ .Values.alphasoc.internal.persistence.storageClass.metadata.name }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ required "Need alphasoc storage request" .Values.alphasoc.internal.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-svc
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
+  annotations:
+    {{- with .Values.alphasoc.internal.svcAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.alphasoc.internal.svcPort }}
+    targetPort: {{ .Values.alphasoc.internal.bindPort }}
+    name: alphasoc
+  selector:
+    app: alphasoc
+{{- end }}
+{{- end }}

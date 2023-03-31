@@ -1,0 +1,11 @@
+{{- if .Values.dns.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# The namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.dns.namespace }}
+{{- end }}
+{{- end }}

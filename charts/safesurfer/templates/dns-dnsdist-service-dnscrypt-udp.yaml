@@ -1,0 +1,37 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.dnscrypt.enabled }}
+{{- if .Values.dns.dnscrypt.service.udp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dnscrypt" "nameOverride" .Values.dns.dnscrypt.nameOverride) }}-udp
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- with .Values.dns.dnscrypt.service.udp.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.dns.dnscrypt.service.udp.type }}
+  {{- if eq .Values.dns.dnscrypt.service.udp.type "LoadBalancer" }}
+  externalTrafficPolicy: Local
+  {{- end }}
+  externalIPs:
+{{- if .Values.dns.dnscrypt.service.udp.externalIPs }}
+{{- with .Values.dns.dnscrypt.service.udp.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  ports:
+    - port: {{ .Values.dns.dnscrypt.service.udp.port }}
+      targetPort: {{ .Values.dns.dnscrypt.bindPort }}
+      protocol: UDP
+      name: udp
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    app: {{ include "dnscryptContainerAndAppName" . }}
+{{- end }}
+{{- end }}
+{{- end }}

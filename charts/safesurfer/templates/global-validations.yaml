@@ -1,0 +1,28 @@
+#
+# A file for performing global data validation. Declarations must stay commented so they do not become
+# valid YAML.
+#
+# {{ required "Image pull secrets needed" .Values.imagePullSecret.username }}
+# {{ required "Image pull secrets needed" .Values.imagePullSecret.password }}
+# {{ required "Image pull secrets needed" .Values.imagePullSecret.email }}
+
+# {{ if and .Values.db.inCluster.enabled .Values.db.external.enabled }}
+# {{ fail "Either an in-cluster or external database must be configured" }}
+# {{ end }}
+
+# {{ if .Values.db.external.enabled }}
+# {{ required "Database connection needed" .Values.db.external.pguser }}
+# {{ required "Database connection needed" .Values.db.external.pgpassword }}
+# {{ required "Database connection needed" .Values.db.external.pghost }}
+# {{ required "Database connection needed" .Values.db.external.pgdb }}
+# {{ required "Database connection needed" .Values.db.external.pgsslmode }}
+# {{ end }}
+
+# {{ if .Values.db.inCluster.enabled }}
+# {{ required "Database connection needed" .Values.db.inCluster.name }}
+# {{ required "Database connection needed" .Values.db.inCluster.pguser }}
+# {{ required "Database connection needed" .Values.db.inCluster.pgdb }}
+# {{ if not (hasPrefix (printf "%s-" .Values.db.inCluster.pguser) .Values.db.inCluster.name) }}
+# {{ fail "The name of the database must begin with the user followed by a dash" }}
+# {{ end }}
+# {{ end }}

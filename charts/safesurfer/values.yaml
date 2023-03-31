@@ -1,0 +1,3113 @@
+## These are the default values for the Safe Surfer Core chart.
+## Values here are overridden by the values file for a specific release,
+## which are in turn overridden by values specified on the CLI. To specify a
+## value on the CLI means to use a --set or --set-file parameter if using
+## helm manually.
+## You can copy this file to create a template for a release's values file.
+## All features are turned off by default, you must select the deployments
+## you want in your release's values file.
+
+## All containers needed are hosted within the registry.gitlab.com/safesurfer
+## registry. An image pull secret for this registry serves as the license key for
+## the whole deployment.
+imagePullSecret:
+  ## Should specify on CLI:
+  username:
+  password:
+  email:
+
+## The DNS server filters DNS traffic according to user/global rules, logs traffic, and ultimately
+## provides customers with internet access. You can also template configuration for VMs or bare
+## metal servers using the `ss-config` tool, which takes a configuration file in the same format
+## as this values file.
+dns:
+  ## Whether to deploy anything DNS related
+  enabled: false
+  ## Timezone for formatting DNS logs. This only means those logged via stdout/stderr.
+  ## Users have individual timezones set through the API.
+  timezone: "Pacific/Auckland"
+  ## Labels for everything
+  labels: {}
+  ## Extra environment variables for any DNS deployment.
+  extraEnv: {}
+  ## When a site is blocked, the DNS will ordinarily CNAME to the host of the block page and then
+  ## follow up the CNAME to find the IP of the block page. You can override this using this parameter.
+  ## If it is an IP, it will be returned as an A record. If it is not an IP, it will be returned using
+  ## a CNAME and the CNAME followed up.
+  blockHostOverride:
+  ## Configure the plain DNS deployment. Other deployments simply convert from other DNS protocols and forward to this one,
+  ## which makes all the important decisions. So this must always be enabled for the other DNS protocols as well.
+  dns:
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## Amount of pods to deploy. Overridden by the hpa if present.
+    replicas: 2
+    ## Container image to use.
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.15.4
+    ## How to roll out new versions
+    deploymentStrategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 10%
+      type: RollingUpdate
+    ## If true, use the host node network for DNS pods. This is the only way to make plain DNS work properly
+    ## on kubernetes, since you cannot create a service using both UDP and TCP yet. You can combine this with
+    ## the `sidecar` option of `dns.dot` and `dns.doh` to create a server with plain DNS, DOH, and DOT on
+    ## a single IP.
+    hostNetwork: false
+    ## Port for the DNS pod to listen on. If using host networking to make each node into a DNS server,
+    ## this would be port 53 instead. If using host networking and port 53 here, the DNS may end up handling
+    ## outgoing queries originating from the cluster itself. However, this is rarely a problem, unless you
+    ## block certain TLDs (e.g. `local` or `service`) by default, which is not recommended with this setup.
+    bindPort: 53530
+    ## Launch this number of threads. These are used for handling UDP questions and doing remote lookups.
+    threads: 4
+    ## https://doc.powerdns.com/authoritative/settings.html#distributor-threads
+    distributorThreads: 8
+    ## The amount of seconds to allow pre-stop hooks to complete before actually stopping the 
+    ## DNS pod.
+    ## This becomes relevant when running DNS using host networking and a non-kubernetes load balancer.
+    ## During a rolling restart, pods will terminate, and pods may not be running on every node.
+    ## This is why we utilize a LB health check to only point to nodes that have an active DNS pod.
+    ## However, once the pod begins to terminate the LB may still be sending traffic to it, resulting
+    ## in a small amount of downtime. To solve this, we utilize a pre-stop hook to tell the health
+    ## check server to report as unhealthy before the shutdown. The LB shifts traffic away from the
+    ## pod before it actually terminates, solving the downtime issue. If this situation applies,
+    ## make sure the wait period is at least greater than the interval at which the LB performs
+    ## health checks, plus a some seconds of buffer time for traffic to redirect.
+    terminationWaitPeriodSeconds: 30
+    ## The amount of seconds to wait before forcefully terminating the DNS pod. The above is added
+    ## onto this to form the real terminationGracePeriodSeconds.
+    terminationGracePeriodSeconds: 30
+    ## Comma separated CIDR ranges to allow requests from. Default: allow everything.
+    allowFrom: 0.0.0.0/0,::/0
+    ## How much to log. https://docs.powerdns.com/recursor/settings.html#setting-loglevel
+    logLevel: 9
+    ## Whether to block firefox DOH for clients connected to this resolver.
+    blockFirefoxDOH: true
+    ## Config to allow debugging
+    debugging:
+      ## A domain that, if queried for TXT records, will return details of the current account.
+      accountQueryDomain:
+      ## A domain that, if queried for TXT records, will return the current DNS protocol.
+      protoQueryDomain:
+      ## A domain that is treated like a TLD - if a domain is prepended and the resulting domain
+      ## queried for a TXT record, the DNS will return the current configuration of that domain.
+      ## e.g. ` dig -t TXT youtube.com.domain.safesurfer ` if "domain.safesurfer" if used.
+      domainLookupDomain:
+      ## A domain for checking what action will occur if the domain is queried. It's a TLD,
+      ## used like domainLookupDomain.
+      explainDomain:
+    ## Configure how much to log for anonymous requests, e.g. where we can't recognize
+    ## an account. These can be accessed through clickhouse directly.
+    ## The default is to not log anonymous traffic.
+    anonymousLogging:
+      ## Log categories and IPs of anonymous requests.
+      enabled: false
+      ## Log domains for anonymous accounts as well.
+      fullHistoryEnabled: false
+    ## Whether to scale horizontally: this will schedule more pods, which if configured, will cause the node
+    ## pool to scale also (if configured).
+    horizonalPodAutoscaler:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetAverageCPUUtilization: 60
+      targetAverageMemoryUtilization: 80
+    ## Recommended. Set a minimum amount of available pods.
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 2
+    ## Extra env for the dns deployment.
+    extraEnv: []
+    ## Sidecars beyond the defaults, e.g. for debugging.
+    extraSidecarContainers:
+      # - name: shell
+      #   image: alpine:3.12
+      #   command:
+      #     - sleep
+      #     - infinity
+    ## Optional security context on a pod level
+    podSecurityContext: {}
+    ## Security context for the DNS container. Host networking requires
+    ## higher priviliges than the defaults.
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      privileged: false
+      runAsUser: 250
+      runAsGroup: 250
+      capabilities:
+        add:
+        - NET_BIND_SERVICE
+        drop:
+        - all
+    ## Example securityContext for host networking
+    # securityContext:
+    #   runAsNonRoot: false
+    #   privileged: true
+    #   runAsUser: 0
+    #   runAsGroup: 0
+    ## External DNS service (internal service is always created). It is possible to configure a custom proxy
+    ## to route to the different NodePorts here, but it's usually an easier solution to use the host networking
+    ## option or install on individual servers using `ss-config`.
+    service:
+      ## Kubernetes does not (yet) support TCP+UDP on the same external port and IP, so we
+      ## need two separate services.
+      tcp:
+        enabled: false
+        type: NodePort
+        port: 30153
+        externalIPs: []
+        ## If specified, claim a particular load balancer IP
+        loadBalancerIP:
+        ## Any extra annotations to add to the service
+        annotations:
+      udp:
+        enabled: false
+        type: NodePort
+        port: 30053
+        externalIPs: []
+        annotations:
+    ## Resources for the DNS container. This scales depending on the amount of DNS traffic and the variety
+    ## of domains requested.
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1.5"
+    ## Define the health check for the DNS pod.
+    healthCheck:
+      ## The domain to look up as a test.
+      testDomain: google.com
+      ## How many seconds to wait for the domain to resolve
+      testTimeout: 4
+    sidecarContainers:
+      ## LMDB manager shares a memory-mapped space with the DNS container and manages the contents
+      ## of LMDB. The DNS container reads from LMDB to make blocking decisions. Two instances of this are run:
+      ## one for account data, and one for domain data. These update domains/accounts on separate periodic
+      ## intervals, and also live update as changes are made from the api/categorizer.
+      lmdbManager:
+        ## Extra environment variables for lmdb manager.
+        extraEnv: []
+        ## Container image to use for lmdb manager.
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+        ## Resources for each container. Domains/accounts can have very different usage characteristics.
+        ## There is often much more domain data, so this container takes more memory, and also more CPU to rebuild
+        ## the data, but updates happen less frequently. Account rebuilds happen much more frequently
+        ## but don't hold as much data (generally).
+        ## The combination of these resources and the DNS container resources also combine to constitute the resources
+        ## available to each init container. The main resource-using init container is the initial LMDB build,
+        ## so it's logical that running full account/domain rebuilds in parallel would at least cover the resources
+        ## of doing each in series like the init container does. See https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#resources
+        resources:
+          domains:
+            requests:
+              memory: "1536Mi"
+              cpu: "100m"
+            limits:
+              memory: "1536Mi"
+              cpu: "200m"
+          accounts:
+            requests:
+              memory: "1536Mi"
+              cpu: "100m"
+            limits:
+              memory: "1536Mi"
+              cpu: "200m"
+      ## The health check container is queried by kubernetes to determine whether the DNS server is running
+      ## properly. If the health check fails, the DNS pod will be restarted. You can open up the health check
+      ## to e.g. an external load balancer.
+      healthCheck:
+        ## Image to use
+        image: registry.gitlab.com/safesurfer/core/apps/status:1.0.0
+        ## Port to bind to on the pod (for HTTP)
+        bindPort: 8080
+        ## Optional secret that must be defined in the URL for the API to respond and check health.
+        ## You may wish to specify this if the health check will have a public IP, which may be the case
+        ## if you're using host networking for the DNS pod.
+        httpSecret:
+          enabled: false
+          secret: # specify on CLI
+        ## Add a fallback HTTP route that responds to all paths and checks the health of all targets.
+        useFallbackRoute: false
+        ## Security context for health check container.
+        ## Will need to be updated if you're using host networking and a restricted port number.
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - all
+        ## Generally low resource requirements, but if this will be publicly accessible, ensure
+        ## that resources are enough to cover potential DOS.
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+        ## Expose the results of the health check in some way.
+        service:
+          enabled: false
+          type: NodePort
+          port: 30080
+          annotations:
+        ## Advanced/optional: Add custom health check targets. See readme for examples.
+        customTargets:
+    ## Containers to run to bring up the DNS.
+    initContainers:
+      ## Required: run lmdb manager initially to build the database before running the DNS pod.
+      initLmdb:
+        nameOverride:
+        extraEnv: []
+        ## lmdb manager image for the initial run.
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+      ## Recommended: create iptables rules on the node to protect against DDOS attacks.
+      ## This only protects plain DNS, not the encrypted DNS methods which are less vulnerable
+      ## to DDOS.
+      iptablesProvisioner:
+        enabled: false
+        nameOverride:
+        extraEnv: []
+        ## Container image to run iptables commands
+        image: registry.gitlab.com/safesurfer/core/dns/iptables-provisioner:1.0.2
+        ## The name of the network interface opened to DNS packets
+        ifcName: eth0
+    ## Default affinity: don't schedule more than one DNS pod on the same node.
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - safesurfer-dns
+            topologyKey: "kubernetes.io/hostname"
+
+  ## dnscrypt forwards DNSCrypt traffic to the main DNS container.
+  dnscrypt:
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## Number of dnscrypt pods to run, overridden by the hpa if present.
+    replicas: 2
+    ## Image to use for dnscrypt.
+    image: registry.gitlab.com/safesurfer/core/dns/dnsdist:1.0.0
+    ## Port for dnscrypt pods to bind to
+    bindPort: 8443
+    ## Whether to bind to host network. This will generally match the selection for the main DNS pod,
+    ## since plain DNS and DNSCrypt must run on the same IP address.
+    hostNetwork: false
+    ## Whether to schedule dnscrypt on every node allowed by .dns.nodeSelector and .dns.tolerations
+    useDaemonset: false
+    ## Define how to serve the cert
+    cert:
+      url:
+      ## Auto-generation isn't supported for DNSCrypt certs. Supply the files manually using the CLI.
+      certFile:
+      keyFile:
+    ## Extra environment variables for dnscrypt.
+    extraEnv: []
+    ## How to roll out dnscrypt deployments.
+    deploymentStrategy:
+      type: RollingUpdate
+    ## Permissions for dnscrypt.
+    securityContext:
+      readOnlyRootFilesystem: true
+      capabilities:
+        add:
+          - NET_BIND_SERVICE
+        drop:
+          - all
+    ## Horizontal autoscaling: schedules more pods given demand (N/A for daemonset).
+    horizonalPodAutoscaler:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetAverageCPUUtilization: 80
+      targetAverageMemoryUtilization: 80
+    ## Recommended: set a minimum amount of available pods.
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
+    ## Configure external access.
+    service:
+      ## Kubernetes does not (yet) support TCP+UDP on the same external port and IP.
+      ## There are ways around this, however, such as utilizating nodeports and configuring
+      ## an LB to route to them properly. Or, using hostnetwork instead of services.
+      udp:
+        enabled: false
+        type: NodePort
+        externalTrafficPolicy: Local
+        port: 30443
+        externalIPs: []
+        annotations:
+      tcp:
+        enabled: false
+        type: NodePort
+        externalTrafficPolicy: Local
+        port: 31443
+        externalIPs: []
+        annotations:
+    ## Resource limits/requests.
+    resources:
+      requests:
+        memory: "80Mi"
+        cpu: "50m"
+      limits:
+        memory: "80Mi"
+        cpu: "50m"
+    ## Set an affinity, e.g. don't schedule on the same nodes.
+    affinity:
+      # podAntiAffinity:
+      #   requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchExpressions:
+      #           - key: app
+      #             operator: In
+      #             values:
+      #               - safesurfer-dnscrypt
+      #       topologyKey: "kubernetes.io/hostname"
+
+  ## Configure DNS-over-HTTPS forwarding to the main DNS pods.
+  doh:
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## If true, run DOH as a sidecar to the main DNS pods. This provides better speed, so is recommended
+    ## if you're running a multi-zone cluster. However, it requires more careful tuning, since a crash
+    ## in DOH will restart and re-initialize the main DNS pod as well, which can potentially interrupt
+    ## other DNS services. You can use this and the deployment at the same time.
+    ## When using sidecar mode, the `replicas`, `deploymentStrategy`, `horizonalPodAutoscaler`, `podDisruptionBudget`,
+    ## `service`, and `affinity` fields below have no effect. To make changes to these fields, you'll have to consider the
+    ## DNS deployment as a whole using the `dns.dns` fields.
+    sidecar: false
+    ## Whether to run DOH as a deployment. When this is true, DNS queries will potentially travel between
+    ## nodes to answer queries. This can be a performance concern, which you can remedy using affinity
+    ## or running as a sidecar instead. Whether it is a performance concern depends on the load, network
+    ## performance, and network topology. In most cases, the deployment method is fine.
+    deployment: true
+    ## Amount of pods: overridden by the hpa if present.
+    replicas: 2
+    ## Port for the pod to listen on.
+    bindPort: 8443
+    ## The host to use for DOH.
+    host: 
+    ## Cert generation for the hostname. Note that for DOH, automatic re-rollout upon a refreshed cert
+    ## is not supported. You must manually restart when a new cert has been generated. If DOH is hooked up
+    ## to an external HTTPS load balancer with SSL offloading, this will not be problem.
+    tls:
+      custom:
+        enabled: true
+        cert:
+        key:
+      secretName:
+    ## Custom DOH forwarder image to use.
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    ## How much to log
+    logLevel: info
+    ## Extra environment variables for the DOH container.
+    extraEnv: []
+    ## How to roll out deployments for DOH.
+    deploymentStrategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 10%
+      type: RollingUpdate
+    ## Permissions for DOH container. Will need to be updated if using sidecar mode, host networking,
+    ## and a restricted port.
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      privileged: false
+      runAsUser: 250
+      runAsGroup: 250
+    ## Horizontal autoscaling: schedule more pods according to demand.
+    horizonalPodAutoscaler:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetAverageCPUUtilization: 80
+      targetAverageMemoryUtilization: 80
+    ## Recommended: specify a minimum amount of available pods.
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
+    ## Resource limits/requests.
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    ## Configure external access to DOH.
+    service:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      port: 443
+      externalIPs: []
+      ## If specified, claim a particular load balancer IP
+      loadBalancerIP:
+      ## Any extra annotations to add to the service
+      annotations:
+      ## Whether to create a Network Endpoint Group for DOH on the Google Cloud Platform.
+      ## This only makes sense for DOH, since the DOT port isn't available for global
+      ## load balancing, and DNSCrypt must run with the same IP as plain DNS (and UDP
+      ## load balancing isn't available.)
+      isGCPNEG: false
+    ## Whether to not act as a DNS proxy, but instead return an empty reply. This allows
+    ## DNS servers to re-sync the cert without having to host the full DNS.
+    serveCertOnly: false
+    ## The amount of times to retry querying the main DNS pods if a query fails.
+    retries: 3
+    ## The amount of TCP connections to multiplex over when querying the main DNS
+    ## pods.
+    tcpConns: 10
+    tcpTimeout: 1m
+    tcpReuseTimeout: 1m
+    ## Specify a deployment affinity, e.g. one DOH pod per node.
+    affinity:
+      # podAntiAffinity:
+      #   requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchExpressions:
+      #           - key: app
+      #             operator: In
+      #             values:
+      #               - safesurfer-doh
+      #       topologyKey: "kubernetes.io/hostname"
+
+  ## Configure DNS-over-TLS forwarding to the main DNS pods.
+  dot:
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## If true, run DOT as a sidecar to the main DNS pods. This provides better speed, so is recommended
+    ## if you're running a multi-zone cluster. However, it requires more careful tuning, since a crash
+    ## in DOT will restart and re-initialize the main DNS pod as well, which can potentially interrupt
+    ## other DNS services. You can use this and the deployment at the same time.
+    ## When using sidecar mode, the `replicas`, `deploymentStrategy`, `horizonalPodAutoscaler`, `podDisruptionBudget`,
+    ## `service`, and `affinity` fields below have no effect. To make changes to these fields, you'll have to consider the
+    ## DNS deployment as a whole using the `dns.dns` fields.
+    sidecar: false
+    ## Whether to run DOT as a deployment. When this is true, DNS queries will potentially travel between
+    ## nodes to answer queries. This can be a performance concern, which you can remedy using affinity
+    ## or running as a sidecar instead. Whether it is a performance concern depends on the load, network
+    ## performance, and network topology. In most cases, the deployment method is fine.
+    deployment: true
+    ## Amount of pods: overridden by the HPA if present.
+    replicas: 2
+    ## Port for the pod to listen on.
+    bindPort: 8358
+    ## Host to use for DOT.
+    host:
+    ## Configure TLS for DNS-over-TLS. The certificate specified here should
+    ## be valid for both the host above AND any subdomain of the host, e.g.
+    ## dot.example.com AND *.dot.example.com. This is because the subdomain is used
+    ## to specify the unique device when connecting to DOT.
+    tls:
+      custom:
+        enabled: true
+        cert:
+        key:
+      secretName:
+    ## Container image for DOT forwarder.
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    ## How much to log
+    logLevel: info
+    ## Extra env for the DOT container.
+    extraEnv: []
+    ## How to roll out deployments.
+    deploymentStrategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 10%
+      type: RollingUpdate
+    ## Pod security context. If using host networking, sidecar, and a restricted port, this will need to
+    ## be updated.
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      privileged: false
+      runAsUser: 250
+      runAsGroup: 250
+    ## Horizontal autoscaling: schedule more pods/nodes with demand.
+    horizonalPodAutoscaler:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetAverageCPUUtilization: 60
+      targetAverageMemoryUtilization: 80
+    ## Recommended: specify minimum available pods.
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
+    ## Resource limits/requests.
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+    ## Configure external access to DOT.
+    service:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      port: 853
+      externalIPs: []
+      ## If specified, claim a particular load balancer IP
+      loadBalancerIP:
+      ## Any extra annotations to add to the service
+      annotations:
+    ## Whether to not act as a DNS proxy, but instead return an empty reply. This allows
+    ## DNS servers to re-sync the cert without having to host the full DNS.
+    serveCertOnly: false
+    ## The max amount of time to keep an idle TLS connection open, parsed as a go duration:
+    ## https://golang.org/pkg/time/#ParseDuration
+    ## Higher values mean better performance for clients but worse resource usage for us,
+    ## and vice versa.
+    maxIdleKeepalive: 60s
+    ## The max amount of time to wait when:
+    ## - Writing to the client
+    ## - Performing the initial handshake
+    writeTimeout: 10s
+    ## The amount of times to retry querying the main DNS pods if a query fails.
+    retries: 3
+    ## The amount of TCP connections to multiplex over when querying the main DNS
+    ## pods.
+    tcpConns: 10
+    tcpTimeout: 1m
+    tcpReuseTimeout: 1m
+    ## Deployment affinity, e.g. don't schedule pods on the same nodes.
+    affinity:
+      # podAntiAffinity:
+      #   requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchExpressions:
+      #           - key: app
+      #             operator: In
+      #             values:
+      #               - safesurfer-dot
+      #       topologyKey: "kubernetes.io/hostname"
+
+  ## Notify the categorizer of any new domains so they may be automatically categorized.
+  ## Batches new domains and uploads them to the admin app over https.
+  newDomainNotifier:
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## Amount of pods: overridden by the hpa if present.
+    replicas: 2
+    ## Port for the pod to bind to.
+    bindPort: 6000
+    ## Access details for the categorizer so new domains can be added.
+    ## You can use any valid username and password here, but it's recommended to use
+    ## `categorizer.adminApp.newDomainNotifierUser` as the API permissions can be restricted more.
+    ## The value of .categorizer.adminApp.ingress.host is used as the categorizer URL.
+    categorizer:
+      ## Specify on CLI
+      user:
+      key:
+    ## Container image for new domain notifier
+    image: registry.gitlab.com/safesurfer/core/apps/new-domain-notifier:5.18.0
+    ## Specify how to add domains.
+    addConfig:
+      ## If true, add new domains to a queue rather than putting them into the database immediately.
+      ## Requires `.categorizer.autoCat.addFromDNS` to be enabled in the deployment containing the
+      ## categorizer that we are connected to (`categorizer.adminApp.ingress.host`).
+      ## See `categorizer.autoCat.addFromDNS` for configuration around how to add domains from the queue.
+      queue: true
+      ## Configure how domains should be added.
+      domainAddConfig:
+        ## The max amount of time to wait for domains to be added to the database.
+        ## Does not include the time for crawling the domains below.
+        timeout: 1m
+        ## Domains are added in batches. If the below is true, the domains are added in a transaction
+        ## that aborts if one of the domains is invalid.
+        haltOnInvalid: false
+        ## If true, don't send a NOTIFY to the DNS to load new domains after their categories have been
+        ## updated. Filtering will be updated at a later time. Can be used to reduce DB load if many
+        ## domains are being added, but may result in domains being added more than once.
+        deferUpdate: false
+        ## Whether to strip the initial "www." from domains. This is recommended as it allows the
+        ## resulting categorization to apply to the whole domain.
+        stripWWW: true
+        ## Whether to allow domains with reserved top-level domains. Not recommended.
+        allowReserved: false
+        ## The timeout period after a failed crawl of a particular domain. It will not be crawled
+        ## again for at least this long since failure. Irrelevant if crawling is not enabled.
+        ## Parsed as a go duration, https://pkg.go.dev/time#ParseDuration.
+        minDurationSinceFailedCrawl: 48h
+      ## Configure how to crawl new domains, if at all.
+      crawling:
+        enabled: false
+        config:
+          ## The minimum amount of time to wait for pages to load, on top of waiting for the page
+          ## to load normally.
+          minPageWait: 10s
+          ## The maximum amount of time to wait for pages to load, including minPageWait and the
+          ## time for pages to load normally. If the document is not ready by this time, analysis
+          ## is started anyway.
+          maxPageWait: 30s
+          ## The amount of pages to look at.
+          maxPages: 5
+          ## The max amount of characters to store from each page.
+          maxTextLen: 5000
+          ## The max amount of images to look at from each page.
+          maxImgs: 50
+          ## The max amount of links to add from each page.
+          maxLinks: 200
+          ## Whether to detect the language of the first page.
+          detectLanguage: false
+          ## If detectLanguage is true, whether to translate the page to the homeLanguage
+          ## using the crawler's translation config. If this is false but detectLanguage is true,
+          ## the crawl will be aborted if the language doesn't match the homeLanguage.
+          translate: false
+          ## The language to translate to or require, if detectLanguage is true.
+          homeLanguage: en
+          ## Whether to find extra images to analyze. Includes a full-page screenshot, and detects
+          ## CSS backgrounds and canvases.
+          findExtraImages: true
+          ## The max amount of extra images to find.
+          maxExtraImages: 100
+          ## If true, don't update any categories or make suggestions, just produce the data of the
+          ## pages.
+          inspectOnly: false
+          ## If true, only make suggestions, never update directly, regardless of the category-level settings.
+          suggestionsOnly: false
+          ## The max duration to wait for the whole crawl to complete. Results in a timeout error if exceeded.
+          maxDuration: 20m
+
+    ## Extra environment variables for new domain notifier
+    extraEnv: []
+    ## How to roll out deployments
+    deploymentStrategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 10%
+      type: RollingUpdate
+    ## Pod security context for new domain notifier
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      privileged: false
+      runAsUser: 250
+      runAsGroup: 250
+    ## Recommended: Minimum available new domain notifier pods
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    ## New domain notifier resource requests/limits
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    hpa:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+      targetAverageMemoryUtilization: 60
+      targetAverageCPUUtilization: 80
+    ## Internal cluster access only
+    service:
+      type: ClusterIP
+      externalTrafficPolicy: Local
+      port: 6000
+      externalIPs: []
+      annotations:
+    ## Example affinity: don't schedule on the same node
+    affinity:
+      # podAntiAffinity:
+      #   requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchExpressions:
+      #           - key: app
+      #             operator: In
+      #             values:
+      #               - safesurfer-new-domain-notifier
+      #       topologyKey: "kubernetes.io/hostname"
+
+  ## Configure logging to clickhouse, if clickhouse is configured below. The DNS does not connect to clickhouse
+  ## directly, instead it sends usage data as UDP packets to clickhoused. Clickhoused aggregates the usage data
+  ## in batches and forwards to clickhouse itself once the right conditions are met.
+  ## Clickhoused is also responsible for adding data to AlphaSOC (see the `alphasoc` top level key).
+  clickhoused:
+    ## Connect to an externally hosted clickhoused instance over UDP. This is not secure, this should only
+    ## be used when clickhoused is accessible from within the same internal network.
+    external:
+      enabled: false
+      ## UDP Connection params
+      host:
+      port:
+    ## Host clickhoused as part of this release. This does not mean that your clickhouse instance has to be
+    ## a part of this release, since you can use the HTTP frontend/backend.
+    internal:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      ## Amount of pods to deploy. Overridden by the HPA if present.
+      replicas: 2
+      ## Image to use.
+      image: registry.gitlab.com/safesurfer/core/apps/clickhoused:1.0.1
+      ## If set to debug or lower, all messages from the DNS are logged.
+      logLevel: info
+      ## Horizontal pod autoscaler
+      hpa:
+        enabled: false
+        minReplicas: 2
+        maxReplicas: 10
+        targetAverageCPUUtilization: 80
+        targetAverageMemoryUtilization: 80
+      ## Pod disruption budget.
+      pdb:
+        enabled: false
+        minAvailable: 2
+      ## Resources for each pod
+      resources:
+        requests:
+          memory: "100Mi"
+          cpu: "100m"
+        limits:
+          memory: "100Mi"
+          cpu: "150m"
+      ## The frontend collects logs from the DNS, or other clickhoused instances.
+      frontend:
+        ## The UDP frontend collects logs directly from the DNS.
+        udp:
+          enabled: true
+          ## Create a load balancer instead of a cluster IP service. This should be combined with
+          ## the custom annotations to create some kind of internal load balancer. You don't want this
+          ## to be public.
+          loadBalancerEnabled: false
+          ## Custom annotations to add to the service.
+          serviceAnnotations:
+            ## e.g. for GKE:
+            # networking.gke.io/load-balancer-type: "Internal"
+            # networking.gke.io/internal-load-balancer-allow-global-access: "true"
+          ## Max amount of time to wait before sending a batch of logs. A longer duration here will make things more efficient
+          ## for clickhouse, with the consequences of:
+          ## - Increasing clickhoused resource usage.
+          ## - Adding a delay before analytics/usage data are available after a request to the DNS.
+          ## If maxBatchSize is reached first, the batch is sent anyway.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          maxBatchWait: 10s
+          ## Max amount of logs to hold in memory (per clickhoused instance) before sending them to clickhouse.
+          ## The tradeoffs here are similar to above - a larger value makes things better for clickhouse but adds a delay and
+          ## increases clickhoused resource usage. If maxBatchWait is met first, the batch is sent anyway.
+          maxBatchSize: 50000
+          ## Port to bind on the pod
+          bindPort: 9001
+          ## Port to bind on the service
+          svcPort: 9001
+        ## The HTTP frontend create a secure ingress to collect logs from other clickhoused instances.
+        ## Disable udp frontend to enable this.
+        http:
+          ## A secret, which must match that of `dns.clickhoused.internal.backend.http.secret` in any other clickhoused instances
+          ## forwarding to this one.
+          ## Specify on CLI.
+          secret:
+          ## Port to bind on the pod
+          bindPort: 8080
+          ## Port to bind on the service
+          svcPort: 80
+          ## The host for the ingress on the internet
+          host:
+          ## If specified, only the comma-separated CIDR IP ranges will be allowed
+          ## to access this ingress.
+          ## Note that http01 tls method will likely not work when this is enabled.
+          whitelistSourceRange:
+          ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+          ## instance.
+          ingressClass: nginx
+          ## Configure TLS for the ingress
+          tls:
+            http01: true
+            custom:
+              enabled: false
+              cert:
+              key:
+            secretName:
+          ## Configuration for rate limiting
+          rateLimiting:
+            enabled: false
+            ## The amount of requests to allow per minute per client (roughly).
+            rpm: '120'
+      ## Decide where the logs will be sent. Note that you can enable multiple.
+      backend:
+        ## Log directly to clickhouse using the top-level clickhouse config.
+        clickhouse:
+          enabled: true
+          ## Timeout that functions as both the TCP connection timeout to the clickhouse instance, and the maximum time
+          ## to write one batch of logs. A sensible value is a little bit smaller than maxBatchWait if the frontend is udp.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          timeout: 8s
+        http:
+          enabled: false
+          ## The secret of the clickhoused http frontend that we're going to point to. Specify on CLI.
+          secret:
+          ## The maximum time
+          ## to write one batch of logs. A sensible value is a little bit smaller than maxBatchWait.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          timeout: 8s
+          ## The base URL of the clickhoused http frontend to send the logs to. This should contain
+          ## the protocol and host with no trailing slash, e.g. https://clickhoused-ingress.example.com
+          baseURL:
+        ## Send data to the internal alphasoc AE engine for analysis. Using this backend require redis to be set up,
+        ## due to the requirement to track rate-limiting.
+        alphasoc:
+          enabled: false
+          ## The maximum time
+          ## to write one batch of logs. A sensible value is a little bit smaller than maxBatchWait.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          timeout: 8s
+
+  ## Configure anonymously logging the association between IPs and categories to redis.
+  ## This data can be accessed by client devices with access to IP-level filtering through
+  ## the API to improve blocking performance.
+  ipsetd:
+    ## Connect to a UDP frontend of ipsetd hosted somewhere else. Note that this connection is not secure,
+    ## it should be within the same network.
+    external:
+      enabled: false
+      host:
+      port:
+    ## Host ipsetd in this cluster.
+    internal:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      ## Amount of pods to deploy. Overridden by the HPA if present.
+      replicas: 2
+      ## Image to use.
+      image: registry.gitlab.com/safesurfer/core/apps/ipsetd:1.0.1
+      ## Horizontal pod autoscaler
+      hpa:
+        enabled: false
+        minReplicas: 2
+        maxReplicas: 10
+        targetAverageCPUUtilization: 60
+        targetAverageMemoryUtilization: 80
+      ## Pod disruption budget.
+      pdb:
+        enabled: false
+        minAvailable: 2
+      ## Resources for each pod
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "100m"
+        limits:
+          memory: "32Mi"
+          cpu: "150m"
+      ## Configure the frontend of ipsetd, which collects the logs containing IPs.
+      frontend:
+        ## Configure the UDP frontend. The DNS can connect straight to this.
+        udp:
+          enabled: true
+          ## Create a load balancer instead of a cluster IP service. This should be combined with
+          ## the custom annotations to create some kind of internal load balancer. You don't want this
+          ## to be public.
+          loadBalancerEnabled: false
+          ## Custom annotations to add to the service.
+          serviceAnnotations:
+            ## e.g. for GKE:
+            # networking.gke.io/load-balancer-type: "Internal"
+            # networking.gke.io/internal-load-balancer-allow-global-access: "true"
+          ## Max amount of time to wait before sending a batch of logs. A longer duration here will make things more efficient
+          ## for redis, with the consequences of:
+          ## - Increasing ipsetd resource usage.
+          ## - Adding a delay before analytics/usage data are available after a request to the DNS.
+          ## If maxBatchSize is reached first, the batch is sent anyway.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          maxBatchWait: 10s
+          ## Max amount of logs to hold in memory (per ipsetd instance) before sending them to redis.
+          ## The tradeoffs here are similar to above - a larger value makes things better for redis but adds a delay and
+          ## increases ipsetd resource usage. If maxBatchWait is met first, the batch is sent anyway.
+          maxBatchSize: 50000
+          ## Port to bind on the pod
+          bindPort: 9002
+          ## Port to bind on the service
+          svcPort: 9002
+        ## Configure the HTTP frontend. This can be used as the backend for another instance of ipsetd.
+        ## To enable, disable the udp frontend.
+        http:
+          ## The secret to allow logs ingress. This is specified as the "password" using http basic auth.
+          ## Specify on CLI.
+          secret:
+          ## Port to bind on the pod
+          bindPort: 8080
+          ## Port to bind on the service
+          svcPort: 80
+          ## Configure the ingress (required)
+          ingress:
+            ## The host to reach the ingress at on the internet.
+            host:
+            ## If specified, only the comma-separated CIDR IP ranges will be allowed
+            ## to access this ingress.
+            ## Note that http01 tls method will likely not work when this is enabled.
+            whitelistSourceRange:
+            ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+            ## instance.
+            class: nginx
+            ## Configure TLS for the ingress (required):
+            tls:
+              http01: true
+              custom:
+                enabled: false
+                cert:
+                key:
+              secretName:
+
+      ## Configure the backend of ipsetd, which sends the logs somewhere else to be stored.
+      backend:
+        ## Configure the redis backend. This is where the IPs are eventually stored.
+        redis:
+          enabled: true
+          ## The maximum time
+          ## to write one batch of logs. A sensible value is a little bit smaller than maxBatchWait.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          timeout: 8s
+          ## The maximum time to keep an IP in storage for. Longer values result in better blocking in theory,
+          ## but higher memory usage on a user's device. Memory usage should be limited by a budget on client
+          ## devices anyway though, as it is on the router implementation.
+          ipTTL: 2h
+        ## Configure the http backend. This sends the IPs to another instance of ipsetd, which then
+        ## stores them. To enable, disable the redis backend.
+        http:
+          ## The secret of the ipsetd http frontend that we're going to point to. Specify on CLI.
+          secret:
+          ## The maximum time
+          ## to write one batch of logs. A sensible value is a little bit smaller than maxBatchWait.
+          ## Parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration
+          timeout: 8s
+          ## The base URL of the ipsetd http frontend to send the logs to. This should contain
+          ## the protocol and host with no trailing slash, e.g. https://ipsetd-ingress.example.com
+          baseURL:
+
+  ## Node selector for all deployments under the `dns` top-level key.
+  nodeSelector: {}
+  ## Tolerations for all deployments under the `dns` top-level key.
+  tolerations: []
+
+## Configure the API. This is an HTTP API for all user-centric operations, such as registering new devices,
+## changing blocking settings, and viewing browsing history.
+api:
+  ## Whether to enable the API. If not enabled, users cannot customize anything. The only available feature
+  ## will be filtering with the default settings.
+  enabled: false
+  ## How many instances of the API to deploy. Overridden by the autoscaler if present.
+  replicas: 2
+  ## The image to use for the API.
+  image: registry.gitlab.com/safesurfer/core/apps/api:10.30.1
+  ## The port to run on.
+  port: 8080
+  ## The port to run the admin API on. The only need to change this is if it clashes
+  ## with the port above.
+  adminPort: 8081
+  ## The admin secret, which if provided, allows performing actions on behalf of users.
+  ## By default, this function is only accessible from within the cluster, but you can
+  ## (carefully) expose it using the `adminIngress`.
+  adminSecret:
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## The port to run the API service on (distinct from the pod port).
+  svcPort: 80
+  svcAnnotations:
+  adminSvcAnnotations:
+  ## Whether to make the provisioned service a Google Cloud Platform Network Endpoint Group.
+  isGCPNEG: false
+  ## The HTTP header to look at to find the user's real IP. If blank, will use the IP of the connection directly
+  ## (which is not usually correct). Can parse headers that provide a comma-separated list of IP addresses, such
+  ## as X-Forwarded-For. In this case, it will use the first value in the comma-separated list, corresponding to
+  ## the most recent hop. Headers containing just a single value, e.g. X-Real-Ip can also be parsed.
+  ## Getting this setting wrong can be a security vulnerability if IP linking is enabled, since it could
+  ## allow users to claim an IP not truly theirs.
+  realIPHeader: X-Forwarded-For
+  ## Optionally reference a key of .providers.ipinfo to enable features of the API that require IP geolocation:
+  ## - Auto-determining a chargebee plan according to country
+  ## - Forcing an email OTP when a new location is detected, see .api.accounts.forceEmailOtpOnUnknownIpField
+  ipInfoProvider:
+  ## Configure IP linking, allowing users to link their account or devices to their current external IP.
+  ## Disabled by default, but can IP linking API endpoints can still be used using admin auth.
+  ipLinking:
+    enabled: false
+  ## Configure how the API handles cross-origin requests.
+  cors:
+    ## Set comma-separated origins that the API will allow CORS requests from.
+    ## If left blank, the API will only accept CORS requests from the frontend.
+    ## This is useful if you want to request the API from some other site.
+    ## You can use one wildcard * per comma-separated group, e.g:
+    ## extraOrigins: https://safesurfer.io,https://*.safesurfer.io
+    extraOrigins: ''
+  ## Optional configuration for each HTTP route of the API. Each route may be either disabled (it will 404), or paywalled
+  ## (it will 403 if the user doesn't have an active subscription).
+  ## You can also change the timeout of requests (default is 1 minute).
+  ## You can find the ID of each route in the API documentation:
+  ## https://safesurfer.gitlab.io/core/api-docs
+  ## A commented out example follows:
+  routesConfig:
+    # "24":
+    #   disable: true
+    # "62":
+    #   paywall: true
+    #   timeout: 2s
+  ## Configuration for roles. Roles are used to restrict which features a returned JWT token will be able to access.
+  ## If a JWT token has roles, it will only be able to access the routes that are assigned to the role.
+  ## The roles below represent a good configuration for the current versions of apps/CPEs.
+  ## As before, you can find the ID of each route in the API documentation:
+  ## https://docs.api.safesurfer.io
+  rolesConfig:
+    android:
+      routes:
+      - 11 # Refresh JWT
+      - 39 # Get DNS token (any device)
+      - 46 # Update protection status
+      - 58 # Add cast event
+      - 60 # Stop cast
+      - 61 # Add cast
+      - 120 # Add evasion attempt
+      - 130 # Add notification
+    router:
+      routes:
+      - 11 # Refresh JWT
+      - 44 # Put client
+      - 46 # Put status
+      - 73 # Add VPN attempt
+      - 125 # Diagnostic report
+      - 86 # Get timezone
+      - 87 # Set timezone
+      - 47 # Get device
+      - 45 # Get firmware
+      - 74 # Get VPN IP addresses
+      - 166 # live updates
+      - 167 # Set version
+      - 169 # Delete client
+      - 122 # Get self service token
+  ## Configure the default resource quotas for each user. You can override these on an individual basis through
+  ## the admin app, or for particular plans or addons.
+  quotas:
+    ## The amount of distinct alert emails that the user can create. If this quota is 0, the mailbot
+    ## will not send alert emails for the account whose quota is 0. The default setup is to allow
+    ## 10 distinct alert emails for any user with an active subscription, and none for anyone else.
+    alert_emails:
+      maxValue: 0
+    ## The max amount of alerts the user can dismiss per 90 day period. This is a quota because as alerts
+    ## have dynamically generated IDs, dismissing them takes up storage.
+    alerts_dismissed:
+      maxValue: 5000
+    ## The amount of devices the user can have. Note that router client devices are counted separately.
+    devices:
+      maxValue: 200
+    ## The max amount of router client devices the user can have across the whole account.
+    client_devices:
+      maxValue: 1000
+    ## The max amount of screentime timetables per device or router client.
+    screentime_timetables_per_device:
+      maxValue: 10
+    ## The max amount of screentime deadlines per device or router client.
+    screentime_deadlines_per_device:
+      maxValue: 10
+    ## The max amount of screentime timers per device or router client.
+    screentime_timers_per_device:
+      maxValue: 10
+    ## The max amount of whitelisted or blacklisted domains per set of custom rules.
+    ## This applies to the normal categories rules and also each screentime timetable,
+    ## timer, or deadline.
+    custom_rules_domain_list_per_device:
+      maxValue: 1000
+    ## The max amount of ignore rules each user can add for security alerts.
+    security_alert_ignore_rules:
+      maxValue: 1000
+    ## The max amount of unique endpoints each user can analyze traffic for using
+    ## alphasoc. Note that individual router clients are counted as separate endpoints,
+    ## and alphasoc pricing is based on the number of unique endpoints per hour,
+    ## so you probably want to configure plans/addons to account for the cost.
+    security_alert_endpoints_per_hour:
+      maxValue: 0
+    ## The max amount of router diagnostic reports each user can send.
+    router_diagnostics_reports:
+      maxValue: 10
+    ## The max amount of logged VPN attempts across the whole account in the last 90 days.
+    vpn_attempts:
+      maxValue: 20_000
+    ## The max amount of evasion attempts across the whole account in the last 90 days.
+    evasion_attempts:
+      maxValue: 1000
+    ## The max amount of logged notifications (social media monitoring) across the whole account in the last 90 days.
+    ## Default of 0 effectively turns off this feature.
+    logged_notifications:
+      maxValue: 0
+    ## The max amount of screencasts in the last 90 days across the whole account, excluding those currently running.
+    ## Default of 0 effectively turns off this feature.
+    screencasts:
+      maxValue: 0
+    ## The max amount of screencast events in the last 90 days across the whole account. These are cleaned up after
+    ## 90 days but not if the cast is still running.
+    ## Default of 0 effectively turns off this feature.
+    cast_events:
+      maxValue: 0
+    ## The max amount of web push subscriptions the user can create.
+    ## Default of 0 effectively turns off this feature.
+    web_push_subscriptions:
+      maxValue: 0
+
+  ## Configure the ingress, allowing HTTP traffic to reach the API from the internet.
+  ## The "host" field here is templated in other places, such as the frontend. Therefore
+  ## the TLS setup here should be a general one usable by browsers. If an alternate TLS setup
+  ## or domain are desired, check the "extraIngress" field below.
+  ingress:
+    enabled: false
+    ## The hostname for the API on the internet.
+    host:
+    ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+    ## instance.
+    class: nginx
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
+    ## Note that http01 tls method will likely not work when this is enabled.
+    whitelistSourceRange:
+    ## Configure TLS for the API
+    tls:
+      http01: true
+      custom:
+        enabled: false
+        cert:
+        key:
+      secretName:
+
+  ## Configure the admin ingress. This allows using admin auth to take actions on behalf
+  ## of users from somewhere else on the internet. It is useful for building an external
+  ## dashboard. Due to the extreme power of this ingress,
+  ## it is recommended to set up `whitelistSourceRange` on this one, and take care in the
+  ## distribution of the admin secret.
+  ## Rate limiting by source IP does not apply to this ingress.
+  adminIngress:
+    enabled: false
+    ## The hostname for the admin API on the internet.
+    host:
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
+    ## Note that http01 tls method will likely not work when this is enabled.
+    whitelistSourceRange:
+    ## Configure TLS for the admin API
+    tls:
+      http01: true
+      custom:
+        enabled: false
+        cert:
+        key:
+      secretName:
+
+  ## Define another ingress that routes to the same backend but may have a different domain
+  ## or SSL certificate. This is often desirable for e.g. using the organization's own CA
+  ## for deploying onto devices.
+  extraIngress:
+    enabled: false
+    ## The hostname for the API on the internet.
+    host:
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
+    whitelistSourceRange:
+    ## Configure TLS for the API, specify on CLI
+    cert:
+    key:
+
+  ## The resources the API is allowed to take.
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  ## Configuration for the HPA (Horizontal Autoscaling).
+  hpa:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetAverageMemoryUtilization: 60
+    targetAverageCPUUtilization: 80
+
+  ## Configuration for the pod disruption budget
+  pdb:
+    enabled: false
+    minAvailable: 1
+
+  ## Configuration for rate limiting
+  rateLimiting:
+    enabled: false
+    ## The amount of requests to allow per minute per client (roughly).
+    rpm: '120'
+
+  ## Extra params for clickhouse connection
+  clickhouse:
+    ## How long to wait for clickhouse reads before timing out
+    readTimeout: 10s
+
+  ## The API is responsible for distributing ipsets to devices.
+  ipsets:
+    ## Generating ipsets is a fairly costly operation, so caching is utilized. There are two
+    ## ways to do this:
+    ## If cacheHttpHeader is true, a Cache-Control HTTP header is added to the response. This
+    ## should be used in combination with a CDN to cache the ipsets close to users. This offers
+    ## better performance at the cost of more configuration. It's of more benefit when multiple
+    ## regions are being served. It's also worth noting that when interacting with IP-blocking
+    ## on a router, the IP address ranges of the CDN will need to be whitelisted, unless some kind of
+    ## fancy setup is done, e.g. only using the CDN for this path.
+    ## You can whitelist IPs by adding them to a globally whitelisted category within the admin app.
+    ## If cacheHttpHeader is false, then redis is used to cache the entire response instead, and re-sent
+    ## from the origin each time.
+    cacheHttpHeader: false
+    ## The max time before a cached ipsets result expires. If cacheHttpHeader is true, this sets
+    ## the max_age option. Otherwise, this is implemented as an expiry within redis.
+    ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+    ## Shouldn't be any larger (or close to) nextSyncWait, or else devices
+    ## will make pointless requests.
+    cacheMaxAge: 10m
+    ## The amount of time each connected device should wait between syncing ipsets.
+    ## A shorter value means higher load for both us and the device, so ideally it should
+    ## be just short enough to keep IPs up to date. A device's local ipset shares the
+    ## TTLs that are initially defined at .dns.ipsetd.internal.ipTTL, so this value should
+    ## be a little shorter than that for devices to be kept up to date.
+    ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+    nextSyncWait: 1h50m
+
+  ## Accounts configuration
+  accounts:
+    ## Whether to set accounts to "managed". In this case you cannot manage accounts directly from the
+    ## API, other than when using admin auth. If true, you will want to make sure `newAccountPolicy` below
+    ## is set to `None`.
+    managed: false
+    ## Describes how new accounts are allowed to be activated.
+    ## If `None`, users can use accounts immediately after creation with no restrictions.
+    ## If `VerifyEmail`, new users must verify their email to use their account fully. See `verifyEmailEndpoints`
+    ## below to configure which API endpoints they can access without email verification.
+    ## If `RequireApproval`, new users must be manually approved by an admin through the `categorizer.adminApp`
+    ## user interface before they can use their account fully. See `approvalRequiredEndpoints`
+    ## below to configure which API endpoints they can access without approval.
+    ## If `RequireApprovalAndVerifyEmail`, new users must have both steps above completed. Until they are approved manually,
+    ## the restrictions under `approvalRequiredEndpoints` apply. If they haven't verified their email but are approved,
+    ## the restrictions under `verifyEmailEndpoints` apply.
+    newAccountPolicy: None
+    ## Which endpoint IDs can be accessed when email verification is required. The default value here
+    ## allows re-sending the verification email and checking verification status, but you may add more access.
+    ## Users will always be able to access endpoint 214, which allows removing the restricted status when
+    ## the account becomes enabled.
+    verifyEmailEndpoints:
+    - 19
+    - 20
+    ## Which endpoint IDs can be accessed when manual approval of the account is required. The default value
+    ## here is nothing, but if `newAccountPolicy` is `RequireApprovalAndVerifyEmail`, you'll probably want to set it
+    ## to the same as above.
+    ## Users will always be able to access endpoint 214, which allows removing the restricted status when
+    ## the account becomes enabled.
+    approvalRequiredEndpoints: []
+    ## Configure arbitrary key/value pairs for each user that can be edited through the API for each user.
+    ## You can do whatever you want with user data through the `categorizer.adminApp`, but these values
+    ## decide what users can view and edit on their own.
+    data:
+      ## Max length of each value
+      maxValueLength: 1000
+      ## Names of keys that can be viewed by users. They won't be editable unless also defined below.
+      visibleKeys: []
+      ## Names of keys that can be overwritten by users. Note that they will be editable even if not
+      ## defined above.
+      editableKeys: []
+    ## If the user signs in from a different-looking IP address, sign in using an email OTP
+    ## rather than a password. To set this up, you must also set up sendgrid and an ipinfo
+    ## provider.
+    ## However, an ipinfo provider is not necessary when using the "IP" setting.
+    ## Possible values are:
+    ## - "None" to always just use a password.
+    ## - "Country" to use an email otp when there is a signin attempt from a country unknown for the user.
+    ## - "Region" to use an email otp when there is a signin attempt from a region/country combination unknown for the user.
+    ## - "City" to use an email otp when there is a signin attempt from a city/region/country combination unknown for the user.
+    ## - "IP" to use an email otp when there is a signin attempt from an IP unknown for the user.
+    forceEmailOtpOnUnknownIpField: None
+    ## If an email OTP is required, how long the code within should be valid for.
+    emailOtpValidityDuration: 10m
+    ## If an email OTP is required, how many tries the user has for a given OTP.
+    emailOtpMaxTries: 5
+    ## Rate-limit the amount of signon attempts per user account per minute. Note that there are other
+    ## protections against password cracking in the API as well - the per-source IP rate limit defined in
+    ## .api.rateLimiting, and the email OTP signin challenge when signing in from a new location.
+    ## If the email OTP challenge is enabled, this rate limit only has an effect if an attacker
+    ## manages to spam the API from the known source IP of a user.
+    ## Users can optionally enable 2fa as well.
+    signonRateLimit:
+      ## The base duration for signin rate limiting. After a signin attempt, the API will delay
+      ## the result of the request for an amount defined by startDuration^numAttempts, where numAttempts
+      ## is the number of failed attempts for a given user per minute. If the result of the calculation
+      ## is greater than endDuration, endDuration applies.
+      ## You can set startDuration to 0s to disable the delay and just use the max parameter.
+      ## The default here is disabled.
+      ## Both are parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+      startDuration: 0s
+      endDuration: 4s
+      ## If there are more than this many signin attempts per minute for a given user, reply with 429.
+      max: 10
+    ## The API supports authenticating with routers running our router integration
+    ## without transmitting account details over the local network.
+    ## This parameter configures how long the client has to grant the remote auth request. Once granted, the router has this
+    ## duration to claim its details and auth token. Too short can result in failures if
+    ## the connection is slow. Too long can increase the chances of an attacker guessing the key, although they would also
+    ## have to be on the same internal network as the user.
+    ## Assuming .Values.api.realIPHeader is configured correctly, this is also secured by source IP.
+    ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+    remoteAuthTimeout: 10s
+    ## The expiry times for JWT tokens that are issued. "standard" tokens are issued for a normal login.
+    ## "extended" tokens are issued to device-specific tokens, which are most often role-restricted.
+    ## The default values are 7 days and 365 days respectively, but if you are enabling other protections
+    ## such as email OTP you may like to make them longer for convenience.
+    ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+    standardTokenExpiryTime: 168h
+    extendedTokenExpiryTime: 8760h
+    ## Whether to delete the browsing history for an account/device when the account/device is deleted.
+    ## If true, deleting accounts or devices will affect the anonymous statistics.
+    ## If false, browsing data remains in the database but is not accessible to any user.
+    clearHistoryOnDelete: true
+    ## Configure how 2FA works.
+    twofactor:
+      ## The amount of time the user has to provide a valid TOTP token or recovery code after providing their username/password.
+      signinTime: 2m
+      ## The amount of time the user has to provide a valid TOTP token when setting up 2FA initially. If this expires, the setup is
+      ## aborted.
+      registrationTime: 10m
+      ## The dimensions of QR codes generated for TOTP registration. You can always make this smaller on the frontend.
+      qrWidth: 250
+      qrHeight: 250
+      ## The name of the account that will show up in the authenticator app, e.g. on Google Authenticator. The user's email
+      ## is also displayed alongside this.
+      issuerName: ''
+    ## Configure how the QR code auth system works. This allows a user to transfer auth to a device by encoding
+    ## a redeemable token inside a QR code and scanning it with the device.
+    qrAuth:
+      ## How long the token is. Longer values are more secure, but result in a QR code that is harder to scan.
+      tokenLength: 64
+      ## How long the token is valid for once created. Shorter values are more secure, but are more
+      ## inconvenient for users if the QR code refreshes at the wrong time.
+      ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+      tokenValidityDuration: 10m
+    ## Apply quotas to any user with an active plan, whether that's courtesy, chargebee, or google play.
+    ## For a full explanation of this, see the comment above .api.accounts.chargebee.planConfig.
+    anyPlanConfig:
+      quotas:
+        alert_emails:
+          valueDelta: 10
+    ## Apply quotas to any user with a courtesy subscription.
+    ## For a full explanation of this, see the comment above .api.accounts.chargebee.planConfig.
+    courtesyPlanConfig:
+      # quotas:
+      #   devices:
+      #     valueDelta: 5
+    ## The API supports chargebee (https://chargebee.com) as any easy way to collect payment for the
+    ## Safe Surfer deployment. If you already have your own billing system you'd like to use, you can
+    ## integrate it for users on the Safe Surfer deployment using the courtesy billing APIs and/or
+    ## the quota APIs of the `categorizer.adminApp`.
+    ## Chargebee webhooks should be set up by pointing chargebee to https://{apiDomain}/v2/webhooks/user-subscription
+    ## where apiDomain is what you specify under api.ingress.host. You must protect the webhook with basic authentication
+    ## and specify the password to be the same as webhookPassword below. Leave username blank. Select all subscription
+    ## events to be sent. Once webhooks are set up, the Safe Surfer deployment updates subscription information
+    ## for users as events take place on Chargebee, such as a payment failing or users updating their subscription
+    ## through Chargebee's email portal.
+    ## Users can also manipulate their subscription through the Safe Surfer API, as well as chargebee's hosted pages
+    ## or APIs. The Safe Surfer API does not send emails regarding subscriptions, that is done through chargebee
+    ## itself.
+    chargebee:
+      ## The name of the chargebee site to use. {site}.chargebee.com
+      ## Specifying this parameter enables chargebee support on the API.
+      site:
+      ## Whether to enable support for product catalog 2.0. All newly created chargebee sites receive this
+      ## version.
+      productCatalog2: true
+      ## The API key to use. Specify on CLI.
+      apiKey:
+      ## The password that chargebee will provide to the API when updating subscriptions. Specify on CLI.
+      webhookPassword:
+      ## The country code to fall back to if you are supporting different currencies, and the country
+      ## with a matching currency doesn't exist.
+      fallbackCountry:
+      ## Define the below to make plan signup work on the default frontend.
+      defaultPlan:
+      ## Define one of the below to make plan signup work on the default frontend.
+      defaultPeriod:
+      defaultPriceId:
+      ## The maximum amount of requests to the subscription API per minute per user. Note that this
+      ## refers to requests to the Safe Surfer API, not the Chargebee API, so the amount of requests
+      ## to the Chargebee API might be higher.
+      perUserRpm: 20
+      ## Configure each chargebee plan and addon.
+      ## Currently quotas are the only config for each plan.
+      ## The config for each quota can have one of "valueDelta" or "maxValue".
+      ## "maxValue" sets a hard limit on the quota, even if it is lower than it would be otherwise.
+      ## "valueDelta" adds or subtracts to the previous max value.
+      ## When applied to an addon, "valueDelta" is multiplied by the quantity of the addon.
+      ## If the change applied to the user's quota from the plan would increase their
+      ## quota, then for the quota change to apply, the subscription must be active.
+      ## If it will decrease their quota, it takes effect no matter what.
+      ## The "previous value" is any matching quota config under
+      ## .api.accounts.chargebee.planConfig.any for chargebee plans or
+      ## .api.accounts.googlePlay.planConfig.any for google play plans,
+      ## followed by .api.accounts.anyPlanConfig, followed by the defaults set
+      ## under .api.quotas.
+      planConfig:
+        ## Optionally define quotas that apply to any chargebee plan. Overridden by the config for
+        ## a more specific plan if found.
+        any:
+          # quotas:
+          #   devices:
+          #     valueDelta: 10
+        plans:
+          # example_US:
+          #   enabled: true
+          #   quotas:
+          #     devices:
+          #       maxValue: 500
+          #   addons:
+          #   - example_addon
+        # Note: the default frontend does not support displaying addons with more than one quota modification
+        addons:
+          # example_addon:
+          #   enabled: true
+          #   quotas:
+          #     devices:
+          #       valueDelta: 1
+          #   maxQuantity: 100
+          #   minQuantity: 0
+          #   prorateOnUpgrade: true
+          #   prorateOnDowngrade: true
+          #   invoiceImmediately: false
+          #   title: ''
+          #   icon: ''
+          #   description: ''
+          #   bottomLink: ''
+          #   bottomLinkText: ''
+      ## When formatting pricing, the currency symbol to use for each country. If the symbol for a country is omitted,
+      ## it will not be used. Either a country code or currency code is accepted here. When using product catalog v2,
+      ## the currency code will be used, and when using product catalog v1, the country code is used.
+      currencySymbols:
+        US: '$'
+        AU: '$'
+        NZ: '$'
+        USD: '$'
+        AUD: '$'
+        NZD: '$'
+      ## Map from country code to currency code. This is used when determining a plan price from a user's IP address,
+      ## which is an optional feature.
+      currencyByCountry:
+        US: USD
+        NZ: NZD
+        AU: AUD
+      ## Chargebee doesn't do the math for GST other than at checkout, so when fetching pricing info via API
+      ## we have to do it ourselves. Map from the country suffix to how much we should multiply the price by
+      ## to account for GST. This does not actually affect how much the customer is charged (chargebee does
+      ## handle this), just the display. If omitted, no GST is added.
+      ## Either a country code or currency code is accepted here. When using product catalog v2,
+      ## the currency code will be used, and when using product catalog v1, the country code is used.
+      gstMultipliers:
+        NZ: 1.15
+        NZD: 1.15
+
+    ## You can also configure payment through google play subscriptions. This requires access to the Google Play Developer API,
+    ## and for real-time developer notifications (RTDN) to be set up through Google Cloud Pub/Sub.
+    googlePlay:
+      ## Enable/disable google play subscriptions. If disabled, requests to create google play subscriptions will fail.
+      enabled: false
+      ## The google cloud project containing the RTDN subscription to subscribe to.
+      rtdnProjectID:
+      ## The id of the RTDN subscription, within the project above.
+      rtdnSubscriptionID:
+      ## The ID of the android application that subscriptions are attached to, e.g. com.safesurfer
+      applicationID:
+      ## Secrets for the developer API: specify on CLI.
+      ## There's a bit of a dance required to get these, see https://developers.google.com/android-publisher/authorization
+      apiSecrets:
+        clientID:
+        clientSecret:
+        refreshToken:
+      ## Configure settings for each plan created on Google Play. For a full explanation of this,
+      ## see the comment above .api.accounts.chargebee.planConfig.
+      ## You can use "any" as a key to target any google play plan, but any quota will be overridden by
+      ## config for a more specific plan if found.
+      planConfig:
+        # pro_surfer_0_1:
+        #   quotas:
+        #     devices:
+        #       maxValue: 1
+        # pro_surfer_1_2:
+        #   quotas:
+        #     devices:
+        #       maxValue: 2
+        # pro_surfer_3_4:
+        #   quotas:
+        #     devices:
+        #       maxValue: 4
+        # pro_surfer_5_50:
+        #   quotas:
+        #     devices:
+        #       maxValue: 50
+
+  ## Emails are needed for alerts and non-managed accounts.
+  sendgrid:
+    ## The sendgrid API key. Recommended to specify on CLI.
+    apiKey: 
+    ## The name of the email sender. You must create the email sender on sendgrid. Specifically this must match
+    ## the "From Name" field of the email sender.
+    senderName:
+    ## The address of the email sender. Must match the "From Email Address" field of the email sender.
+    senderAddress:
+
+  ## Configure the emails themselves.
+  emails:
+    ## Configure theming for all emails. The text of the emails can be overridden using the 
+    ## string constants below.
+    theme:
+      ## The brand name shows in the title of alert emails sent by the mailbot, e.g. "{{ .brandName }} Alerts".
+      ## It is also the alt text for the header image.
+      brandName: ''
+      ## A URL to the logo to show at the top of the email. It should be approximately 500px wide
+      ## and 100px tall.
+      headerImageUrl: ''
+      ## The color of the background for all actionable buttons.
+      buttonColor: ''
+      ## The text color for all actionable buttons.
+      buttonTextColor: ''
+      ## The background color of all actionable buttons when hovered.
+      buttonHoverColor: ''
+      ## A link where users can go to get help. Shown at the bottom of alert emails.
+      supportUrl: ''
+      ## At the bottom of each email, the domain of the sending site is shown, which is also
+      ## a link to the site, e.g. "safesurfer.io" would be shown, with a link to https://safesurfer.io
+      siteDomain: ''
+      siteUrl: ''
+      ## Only used within the Google Play emails to refer to the name of the Google Play subscription,
+      ## so if Google Play integration isn't being used, can be omitted.
+      planName: ''
+      ## The CSS background color of the area behind the header image.
+      headerBackgroundColor: ''
+      ## The CSS background color of the main content section.
+      backgroundColor: '#f3f3f3'
+
+  ## Alerts configuration. Alerts enable sending periodic emails with account activity
+  ## such as blocked sites. Alerts are also viewable from the frontend.
+  alerts:
+    ## Tuning parameter: increasing this will increase system load, but reduce the likelyhood
+    ## that a requests for alerts will timeout. There is only a need to change it if issues are
+    ## oberserved with either high system load or alerts timeouts.
+    lookaheadMultiplier: 20
+    ## Configure the mailbot, which sends the automated emails
+    mailbot:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      ## If set to debug or lower, the sent emails and arguments are also logged to the console.
+      logLevel: info
+      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.4.1
+      ## Resources: if requests are specified the task may fail to schedule and emails are missed.
+      ## the used resources are small and not taken up for very long.
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "100m"
+
+  ## Configure how devices are managed
+  devices:
+    ## If a router is registered without an explicit name, a generated one is used. E.g. if this parameter
+    ## is "Wifi", the generated name would be "Wifi 2" for the second unnamed device.
+    routerPlaceholderName: WiFi 
+    ## Apple provides a way to quickly set settings: For us we're interesting in the DNS settings.
+    ## The API provides an endpoint to generate these config files using the parameters here:
+    appleMobileConfig:
+      ## A comma-separated string of the IP address to use for DOH.
+      dohAddresses:
+      ## The identifier for the payload content. The payload content contains the dns settings. E.g. io.safesurfer.dnsSettings
+      payloadContentIdentifier:
+      ## The host for DOH, e.g. doh.safesurfer.io
+      dohHost:
+      ## The description for the config (shows on the apple UI)
+      description:
+      ## The name of the config (shows on the apple UI)
+      name:
+      ## The identifier for the whole payload, e.g. io.safesurfer.profile
+      payloadIdentifier:
+
+  ## Notification configuration: Notifications are delivered via web push for certain events.
+  notifications:
+    ## Enable whether users can sign up for notifications
+    enabled: false
+    ## The email to contact if there are notification issues (passed on to providers)
+    email:
+    ## The VAPID public key
+    vapidPublicKey:
+    ## The VAPID private key: recommended to specify on the CLI.
+    vapidPrivateKey:
+
+  ## Screencasts configuration
+  screencasts:
+    ## Whether to enable this feature
+    enabled: false
+    ## A string representing a GCP service account JSON file, used for storing screencast images in buckets.
+    ## Recommended to specify on the CLI.
+    gcpServiceAccount:
+    ## The name of the bucket to use for images
+    gcpBucketName:
+
+  ## Insights show the change in traffic over a time period compared to a previous time period.
+  ## They are used in the dashboard and alert emails, if configured.
+  insights:
+    ## Weightings to decide which insights are most important.
+    factors:
+      priority: 100
+      before: 0.5
+      after: 0.5
+      change: 1
+
+  ## Configure daily cleanup tasks. This job resets screentime timers and deletes user data once it
+  ## reaches a certain age.
+  dailyCleanup:
+    enabled: true
+    ## Image to use
+    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.0.1
+    ## Logging level, currently doesn't log anything below info
+    logLevel: info
+    ## Configure timeouts
+    timeouts:
+      ## Timeout for whole job
+      main: 20h
+      ## Timeout for each DB request
+      db: 10s
+      ## Timeout for resetting all timers
+      resetTimers: 1h
+      ## Timeout for removing old alphasoc usage quota history items. These are removed after 9 days. Only the last 7 days are queried.
+      aeUsageHistory: 30m
+      ## Timeout for removing old alphasoc security alerts. These are removed after 90 days.
+      aeAlerts: 1h
+      ## Timeout for removing old VPN attempts. These are removed after 90 days.
+      vpnAttempts: 1h
+      ## Timeout for removing old evasion attempts. These are removed after 90 days.
+      evasionAttempts: 1h
+      ## Timeout for removing old logged notifications. These are removed after 90 days.
+      notificationsLog: 1h
+      ## Timeout for removing old screencasts. These are removed after 90 days.
+      casts: 1h
+    ## Resource for the container. Defaults are to have conservative limits but no requests
+    ## to ensure the container can schedule.
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+  ## Override any string constants used by the API here. Also can be used to provide other languages for the strings.
+  ## See the following comment for an example that overrides every string with its existing value for the "en" language code.
+  ## Note that i18n support is a work in progress, only the "en" language code is guaranteed to work for every string at the moment.
+  strings: {}
+    # langs:
+    #   en:
+    #     strings:
+    #       alerts_placeholder_unknown_device: 'Unknown Device'
+    #       usage_insights_viewed_site_count: 'Sites Viewed'
+    #       usage_insights_viewed_site_count_description: 'How many sites have been accessed over the time period.'
+    #       usage_insights_blocked_site_count: 'Sites Blocked'
+    #       usage_insights_blocked_site_count_description: 'How many sites have been blocked over the time period.'
+    #       usage_insights_general_group_name: 'General'
+    #       usage_unknown_category_name: 'General'
+    #       usage_unknown_category_description: "Sites that haven't been classified yet."
+    #       notifications_initial_notification_title: 'Example Notification'
+    #       security_alerts_adversary_simulation_title: 'Adversary Simulation'
+    #       security_alerts_adversary_simulation_description: Adversary simulation traffic to a benign destination.
+    #       security_alerts_alternate_dns_title: 'Alternate Dns'
+    #       security_alerts_alternate_dns_description: 'Suspicious traffic to DNS server that supports non-standard domains'
+    #       security_alerts_anon_circuit_title: 'Anonymizing Circuit'
+    #       security_alerts_anon_circuit_description: 'Anonymizing circuit setup indicating infection or evasion attempt'
+    #       security_alerts_dynamic_dns_title: 'Dynamic DNS'
+    #       security_alerts_dynamic_dns_description: 'Dynamic DNS traffic can, but does not always, indicate infection'
+    #       security_alerts_bad_dynamic_dns_title: 'Bad Dynamic DNS'
+    #       security_alerts_bad_dynamic_dns_description: 'Known bad dynamic DNS provider traffic'
+    #       security_alerts_bad_irc_traffic_title: 'Bad IRC Traffic'
+    #       security_alerts_bad_irc_traffic_description: 'Suspicious IRC traffic indicating infection'
+    #       security_alerts_bad_tld_title: 'Suspicious TLD'
+    #       security_alerts_bad_tld_description: 'Traffic to a TLD (e.g. .xyz) commonly associated with malware. This does not always indicate infection.'
+    #       security_alerts_bad_tunnel_title: 'Bad Tunnel'
+    #       security_alerts_bad_tunnel_description: 'Known bad tunneling provider traffic'
+    #       security_alerts_c2_communication_title: 'Command & Control Communication'
+    #       security_alerts_c2_communication_description: 'Communicating to a known malware command & control destination'
+    #       security_alerts_cryptomining_title: 'Cryptomining'
+    #       security_alerts_cryptomining_description: 'Cryptomining indicating infection or resource abuse'
+    #       security_alerts_dga_volume_title: 'Large Amount of DGA Traffic'
+    #       security_alerts_dga_volume_description: 'Multiple requests for dynamically generated domains indicating infection'
+    #       security_alerts_encrypted_dns_title: 'Encrypted DNS'
+    #       security_alerts_encrypted_dns_description: 'Encrypted DNS traffic indicating potential infection or evasion'
+    #       security_alerts_encrypted_dns_common_title: 'Common Encrypted DNS'
+    #       security_alerts_encrypted_dns_common_description: 'Encrypted DNS traffic to a common destination, indicating potential infection or evasion'
+    #       security_alerts_encrypted_dns_suspicious_title: 'Suspicious Encrypted DNS'
+    #       security_alerts_encrypted_dns_suspicious_description: 'Encrypted DNS traffic to a server that supports non-standard domains'
+    #       security_alerts_encrypted_dns_volume_title: 'Large Amount of Encrypted DNS'
+    #       security_alerts_encrypted_dns_volume_description: 'Multiple encrypted DNS requests indicating infection or evasion'
+    #       security_alerts_imposter_title: 'Imposter'
+    #       security_alerts_imposter_description: 'Traffic to a valid domain impersonating a known brand'
+    #       security_alerts_imposter_suspicious_title: 'Suspicious Imposter'
+    #       security_alerts_imposter_suspicious_description: 'Traffic to a suspicious domain impersonating a known brand'
+    #       security_alerts_imposter_suspicious_young_title: 'Suspicious Young Imposter Domain'
+    #       security_alerts_imposter_suspicious_young_description: 'Traffic to a suspicious recently-registered domain impersonating a known brand'
+    #       security_alerts_imposter_volume_title: 'Large Amount of Imposter Traffic'
+    #       security_alerts_imposter_volume_description: 'Traffic from multiple sources to a domain impersonating a known brand'
+    #       security_alerts_imposter_young_title: 'Young Imposter Domain'
+    #       security_alerts_imposter_young_description: 'Traffic to a recently-registered domain impersonating a known brand'
+    #       security_alerts_irc_traffic_title: 'IRC Traffic'
+    #       security_alerts_irc_traffic_description: 'IRC traffic requiring investigation'
+    #       security_alerts_likely_malicious_domain_title: 'Likely Malicious Domain'
+    #       security_alerts_likely_malicious_domain_description: 'Traffic to a likely malicious domain'
+    #       security_alerts_malware_distribution_title: 'Malware Distribution'
+    #       security_alerts_malware_distribution_description: 'Traffic to a known malware distribution site'
+    #       security_alerts_multiple_long_hostnames_title: 'Multiple Long Domains'
+    #       security_alerts_multiple_long_hostnames_description: 'Multiple requests to long hostnames indicating DNS tunneling'
+    #       security_alerts_oob_interaction_title: 'Out-of-band Interaction'
+    #       security_alerts_oob_interaction_description: 'Traffic to an out-of-band interaction testing domain requiring investigation'
+    #       security_alerts_p2p_title: 'P2P/Torrents'
+    #       security_alerts_p2p_description: 'Traffic indicating torrenting or other P2P protocols that are commonly used for illegal activity'
+    #       security_alerts_phishing_traffic_title: 'Phishing'
+    #       security_alerts_phishing_traffic_description: 'Traffic to a known consumer phishing site'
+    #       security_alerts_popup_traffic_title: 'Popups'
+    #       security_alerts_popup_traffic_description: 'Malicious popup traffic'
+    #       security_alerts_remote_access_software_title: 'Remote Access Software'
+    #       security_alerts_remote_access_software_description: 'Possibly unwanted remote access software installed'
+    #       security_alerts_reverse_lookup_volume_title: 'Reverse Lookups'
+    #       security_alerts_reverse_lookup_volume_description: 'High volume of reverse DNS lookups indicating scanning activity'
+    #       security_alerts_sinkholed_title: 'Sinkhole'
+    #       security_alerts_sinkholed_description: 'Traffic to a known sinkhole indicating infection. A sinkhole means the attack has been partially disrupted by a security authority, but malware may still be present locally.'
+    #       security_alerts_spearphishing_traffic_title: 'Spearphishing'
+    #       security_alerts_spearphishing_traffic_description: 'Traffic to a malicious spear phishing site. Spear phishing is more targeted than general phishing.'
+    #       security_alerts_suspicious_cluster_volume_title: 'Cluster of Suspicious Requests'
+    #       security_alerts_suspicious_cluster_volume_description: 'Cluster of suspicious requests requiring investigation'
+    #       security_alerts_suspicious_domain_title: 'Suspicious Domain'
+    #       security_alerts_suspicious_domain_description: 'Accessing a domain that looks suspicious'
+    #       security_alerts_suspicious_domain_beacon_title: 'Beaconing'
+    #       security_alerts_suspicious_domain_beacon_description: 'Suspicious DNS beaconing indicating infection'
+    #       security_alerts_suspicious_domain_brand_title: 'Suspicious Branded Domain'
+    #       security_alerts_suspicious_domain_brand_description: 'Traffic to a suspicious domain containing a brand name'
+    #       security_alerts_suspicious_domain_volume_title: 'Large Amount of Suspicious Domains'
+    #       security_alerts_suspicious_domain_volume_description: 'Multiple requests to suspicious domains'
+    #       security_alerts_suspicious_dynamic_dns_title: 'Suspicious Dynamic DNS'
+    #       security_alerts_suspicious_dynamic_dns_description: 'Suspicious dynamic DNS provider traffic'
+    #       security_alerts_suspicious_hosting_provider_title: 'Suspicious Hosting Provider'
+    #       security_alerts_suspicious_hosting_provider_description: 'Traffic to a suspicious hosting provider'
+    #       security_alerts_suspicious_tunnel_title: 'Suspicious Tunnel'
+    #       security_alerts_suspicious_tunnel_description: 'Traffic to a suspicious tunneling provider'
+    #       security_alerts_tds_traffic_title: 'TDS Traffic'
+    #       security_alerts_tds_traffic_description: 'Traffic to a TDS mechanism requiring investigation'
+    #       security_alerts_telegram_bot_title: 'Telegram Bot'
+    #       security_alerts_telegram_bot_description: 'Telegram Bot API traffic indicating possible infection'
+    #       security_alerts_tor_dns_title: 'Tor'
+    #       security_alerts_tor_dns_description: 'Suspicious TOR DNS request'
+    #       security_alerts_unique_young_domain_volume_title: 'Unique Young Domain'
+    #       security_alerts_unique_young_domain_volume_description: 'Traffic from multiple sources to a unique young domain'
+    #       security_alerts_unknown_dynamic_dns_title: 'Unknown Dynamic DNS'
+    #       security_alerts_unknown_dynamic_dns_description: 'Unknown dynamic DNS provider traffic'
+    #       security_alerts_unknown_tunnel_title: 'Unknown Tunneling'
+    #       security_alerts_unknown_tunnel_description: 'Unknown tunneling provider traffic'
+    #       security_alerts_unreachable_domain_volume_title: 'Large Amount of Unreachable Domain Traffic'
+    #       security_alerts_unreachable_domain_volume_description: 'Multiple requests to unreachable domains'
+    #       security_alerts_unwanted_title: 'Potentially Unwanted Program'
+    #       security_alerts_unwanted_description: 'Potentially unwanted program or browser extension installed'
+    #       security_alerts_vpn_activity_title: 'VPN Activity'
+    #       security_alerts_vpn_activity_description: 'Third-party VPN activity. VPNs can be used as an evasion mechanism.'
+    #       security_alerts_web_skimming_traffic_title: 'Web Skimming'
+    #       security_alerts_web_skimming_traffic_description: 'Traffic to a destination hosting malicious web skimming JavaScript'
+    #       security_alerts_webhook_traffic_title: 'Webhook'
+    #       security_alerts_webhook_traffic_description: 'Traffic to a free webhook service indicating potential exfiltration'
+    #       security_alerts_young_domain_title: 'Young Domain'
+    #       security_alerts_young_domain_description: 'Traffic to an unknown newly-registered domain'
+    #       approval_email_subject: 'Your account has been approved'
+    #       approval_email_title: 'Account Approved'
+    #       approval_email_text: 'You can now log in to the dashboard to control your filtering settings and view browsing history for your account.'
+    #       approval_email_button_text: 'Log in'
+    #       approval_email_link: ''
+    #       otp_email_subject: 'Your signin code'
+    #       otp_email_title: 'Your Signin Code'
+    #       otp_email_text: "Use this code to sign in to BRAND_NAME. If you didn't try to sign in to BRAND_NAME, someone may be trying to access your account."
+    #       verify_email_subject: 'Verify Account'
+    #       verify_email_title: 'Verify Account'
+    #       verify_email_text: "Welcome to BRAND_NAME! To make sure you're not a robot, verify your email with the link below. If you didn't sign up, please ignore this email."
+    #       verify_email_button_text: 'Verify'
+    #       google_play_subscription_in_grace_period_subject: 'PLAN_NAME Payment Failed'
+    #       google_play_subscription_in_grace_period_title: 'PLAN_NAME Payment Failed'
+    #       google_play_subscription_in_grace_period_text: "We couldn't charge your payment method for PLAN_NAME on Google Play. Please update your payment method or add funds to retain access to PLAN_NAME features."
+    #       google_play_subscription_in_grace_period_button_text: 'Manage On Google Play'
+    #       google_play_subscription_on_hold_email_subject: 'PLAN_NAME On Hold'
+    #       google_play_subscription_on_hold_email_title: 'PLAN_NAME On Hold'
+    #       google_play_subscription_on_hold_email_text: "We couldn't retry your payment method for PLAN_NAME on Google Play, and PLAN_NAME has been put on hold. Please update your payment method or add funds to regain access to PLAN_NAME features."
+    #       google_play_subscription_on_hold_email_button_text: 'Manage On Google Play'
+    #       password_reset_email_subject: 'Reset Password'
+    #       password_reset_email_title: 'Reset Password'
+    #       password_reset_email_text: "If you made a request to reset your password, click the link below and enter a new one. If you didn't request a password reset, please ignore this email."
+    #       password_reset_email_button_text: 'Reset Password'
+    #     templates:
+    #       chargebee_price:
+    #       - field: currencySymbol
+    #       - field: price
+    #         formatType:
+    #           float:
+    #             dp: 2
+    #       - text: ' '
+    #       - field: currencyCode
+    #       chargebee_price_period:
+    #       - text: 'per '
+    #       - field: periodUnit
+    #       chargebee_price_period_multi:
+    #       - text: 'per '
+    #       - field: period
+    #       - text: ' '
+    #       - field: periodUnit
+    #       - text: 's'
+    #       chargebee_plan_trial:
+    #       - field: period
+    #       - text: ' '
+    #       - field: periodUnit
+    #       - text: ' free trial'
+    #       security_alert_alert_display:
+    #       - text: 'Security alert for '
+    #       - field: device
+    #       - text: ' accessing '
+    #       - field: domain
+    #       - text: ' '
+    #       - field: alert_group
+    #         members:
+    #         - text: '('
+    #         - field: alert_type
+    #         - text: ')'
+    #       security_alert_alert_summary_display:
+    #       - field: count
+    #       - text: ' security alerts for '
+    #       - field: device
+    #       - text: ' accessing '
+    #       - field: domain
+    #       - text: ' '
+    #       - field: alert_group
+    #         members:
+    #         - text: '('
+    #         - field: alert_types
+    #         - text: ')'
+    #       request_alert_display:
+    #       - field: device
+    #       - text: ' requested '
+    #       - field: category
+    #       - text: ' '
+    #       - field: domain-group
+    #         members:
+    #         - text: '('
+    #         - field: domain
+    #         - text: ')'
+    #       request_alert_summary_display:
+    #       - field: device
+    #       - text: ' requested '
+    #       - field: category
+    #       - text: ' '
+    #       - field: count
+    #       - text: ' times.'
+    #       - field: domain-group
+    #         members:
+    #         - text: '('
+    #         - field: domains
+    #         - text: ')'
+    #       request_alert_summary_display_domain_group:
+    #       - field: first_domain
+    #       - text: ' and '
+    #       - field: count
+    #       - text: ' more'
+    #       screenshot_alert_display:
+    #       - field: device
+    #       - text: ' viewed '
+    #       - field: category
+    #       - field: confidence-group
+    #         members:
+    #         - text: ' ('
+    #         - field: confidence
+    #         - text: ' confidence'
+    #         - text: ')'
+    #       screenshot_alert_summary_display:
+    #       - field: device
+    #       - text: ' viewed '
+    #       - field: category
+    #       - text: ' '
+    #       - field: count
+    #       - text: ' times.'
+    #       evasion_attempt_alert_display:
+    #       - field: device
+    #       - text: ' '
+    #       - field: method
+    #       - text: ' '
+    #       - field: extra
+    #       evasion_attempt_alert_summary_display:
+    #       - field: device
+    #       - text: ' '
+    #       - field: method
+    #       - text: ' '
+    #       - field: count
+    #       - text: ' times.'
+    #       device_status_alert_display:
+    #       - field: device
+    #       - text: ' not protected.'
+    #       vpn_attempt_alert_display:
+    #       - field: device
+    #       - text: ' requested VPN '
+    #       - field: ip
+    #       vpn_attempt_alert_summary_display:
+    #       - field: device
+    #       - text: ' requested VPN '
+    #       - field: ip
+    #       - text: ' '
+    #       - field: count
+    #       - text: ' times.'
+    #       logged_notification_alert_display:
+    #       - field: device
+    #       - text: ' got notification: '
+    #       - field: notification
+    #         truncateTo: 30
+    #         appendIfTruncated: '...'
+    #       logged_notification_alert_summary_display:
+    #       - field: device
+    #       - text: ' got notification: '
+    #       - field: notification
+    #         truncateTo: 30
+    #         appendIfTruncated: '...'
+    #       - field: count
+    #       - text: ' times.'
+    #       no_activity_alert_display:
+    #       - text: 'No recent activity for '
+    #       - field: device
+    #       - text: ' '
+    #       - field: check
+    #         members:
+    #         - text: '(Check BRAND_NAME is still running)'
+
+## Configure components for domain categorization management and other admin tasks.
+categorizer:
+  ## The admin app is an API and UI for controlling all aspects of admin for a deployment,
+  ## other than those configurable here. Some functionality relies on other components being enabled below.
+  adminApp:
+    ## Whether to create the admin app. This also requires redis to be enabled.
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## The port to run the API service on (distinct from the pod port).
+    svcPort: 8080
+    svcAnnotations:
+    ## Configure the ingress, allowing HTTP traffic to reach the categorizer from the internet.
+    ## All sensitive endpoints are protected by HTTP basic auth.
+    ## This is required for the block page to work, since it anonymously queries the categories
+    ## of blocked sites using the admin app.
+    ingress:
+      enabled: false
+      ## The hostname for the categorizer on the internet.
+      host:
+      ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+      ## instance.
+      class: nginx
+      ## If specified, only the comma-separated CIDR IP ranges will be allowed
+      ## to access this ingress.
+      ## Note that http01 tls method will likely not work when this is enabled.
+      whitelistSourceRange:
+      ## Configure TLS for the categorizer
+      tls:
+        ## Either http01 or dns01 validation is supported
+        http01: true
+        custom:
+          enabled: false
+          cert:
+          key:
+        secretName:
+    ## The amount of categorizer instances. Overridden by the HPA if created.
+    replicas: 1
+    ## The image to use for the categorizer
+    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.21.2
+    ## The port to run on.
+    port: 8080
+    ## The HTTP header to look at to find the user's real IP. If blank, will use the IP of the connection directly
+    ## (which is not usually correct). Can parse headers that provide a comma-separated list of IP addresses, such
+    ## as X-Forwarded-For. In this case, it will use the first value in the comma-separated list, corresponding to
+    ## the most recent hop. Headers containing just a single value, e.g. X-Real-Ip can also be parsed.
+    realIPHeader: X-Forwarded-For
+    ## Configure login details for an admin access account. The admin account can't be deleted and its details are specified here.
+    admin:
+      ## Specify on CLI
+      username:
+      password:
+    ## Provide a list of CIDR IP ranges that are allowed to perform authenticated requests to the admin app.
+    ## Unauthenticated requests can be performed regardless. Also see `categorizer.adminApp.ingress.whitelistSourceRange`
+    ## which applies to all requests, even unauthenticated ones.
+    authIpWhitelist: []
+    ## Optionally create a user for the new domain notifier.
+    newDomainNotifierUser:
+      enabled: false
+      ## If true, user will only be able to queue domains to the autocat pipeline, not do any other API ops.
+      queueOnly: true
+      ## Access details, specify on CLI
+      user:
+      accessKey:
+    ## When downstream categorizers pull from this one, how many domain history entries should we allow
+    ## returning per request?
+    maxHistoryEntriesPerRequest: 1000
+    ## The amount of resources to allocate.
+    resources:
+      requests:
+        cpu: "75m"
+        memory: "128Mi"
+      limits:
+        cpu: "150m"
+        memory: "128Mi"
+    ## Configure access to object storage for the categorizer. This is used for:
+    ## - Storing classifiers for autocategorization.
+    ## - Caching history segments when other instances are mirrored from this one (optional, but recommended).
+    storage:
+      ## If false, model training will fail.
+      enabled: false
+      ## Reference a key of providers.storage
+      provider:
+    ## Configure access to object storage for viewing crawl resources, e.g. images from sites.
+    ## This should be the same as .categorizer.autoCat.crawlerWorker.jobs.storage.provider.
+    crawlerStorage:
+      ## If false, you will not be able to view crawl resources.
+      enabled: false
+      ## Reference a key of providers.storage
+      provider:
+    ## You can view possibly bad images blurred via the categorizer.
+    imageProxy:
+      ## How much to blur images
+      imageBlur: '20'
+      ## Image quality for JPEGs
+      imageQuality: '8'
+    ## Configure horizontal autoscaling for the categorizer itself
+    hpa:
+      enabled: false
+      ## Min/Max amount of categorizer instances
+      minReplicas: 1
+      maxReplicas: 10
+      ## Target utilizations
+      targetAverageMemoryUtilization: 60
+      targetAverageCPUUtilization: 80
+    ## Configure API endpoint rate limiting.
+    rateLimiting:
+      ## Whether to enable rate limiting per-client on all requests.
+      enabled: false
+      ## The amount of requests to allow per minute per client (roughly).
+      rpm: '120'
+      ## There is a public endpoint for getting the details of a domain, used by the block page.
+      ## This is the amount of daily requests per IP. You can set this to 0 to disable the public
+      ## endpoint.
+      ## Rate limiting on this endpoint is enabled regardless of the above "enable" setting.
+      publicGetDomain: '100'
+    ## Configure categorizer interface with clickhouse
+    clickhouse:
+      ## Max amount of time for clickhouse reads. Categorizer makes large queries, this should
+      ## generally be longer than for the API.
+      readTimeout: 1m
+
+  ## Configure syncing of domains from external sources. Requires the adminApp to be enabled,
+  ## but not necessarily with an ingress.
+  externalDomainSync:
+    ## Whether to enable external domain sync
+    enabled: false
+    ## Cron spec: when to sync domains
+    schedule: 0 0 * * 3
+    ## The image to use for domain sync
+    image: registry.gitlab.com/safesurfer/core/apps/external-domain-sync:5.18.0
+    ## Configure various timeouts, parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration.
+    timeouts:
+      ## The max amount of time for the entire cronjob.
+      main: 24h
+      ## The max amount of time for each source to complete.
+      perSource: 1h
+      ## The max amount of time for each batch to complete. Also see the batch size below.
+      perBatch: 5m
+    ## Add domains in batches of this size. Takes up temporary space in redis.
+    batchSize: 500
+    ## Login details the domain sync job uses to communicate with the admin app. Username must not have spaces.
+    login:
+      # Specify on CLI
+      accessKey:
+    ## The resources to allocate to the job while running
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "100m"
+        memory: "256Mi"
+
+  ## Configure syncing of domains from other categorizer instances. Requires the adminApp
+  ## to be enabled, but not necessarily with an ingress.
+  mirroring:
+    ## Mirroring may be disabled entirely if not used
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## Cron spec: when to mirror domains
+    schedule: 0 0 * * 5
+    ## The timeout for the entire job. Note that the first sync, or the first sync after
+    ## changing the mapping setup may take quite a while. Successive syncs are fast.
+    ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
+    timeout: 168h
+    ## How many history items to request at a time. Higher values are more efficient, but it
+    ## must be low enough that http requests to the remote categorizer don't time out.
+    batchSize: 250
+    ## The timeout for adding/updating each batch on the local side.
+    batchTimeout: 10m
+    ## How many domains to update at a time internally.
+    internalBatchSize: 1000
+    ## The duration before HTTP requests to the remote categorizer time-out.
+    externalHTTPTimeout: 10m
+    ## The minimum amount of time to wait between requests to the remote categorizer.
+    externalHttpMinWait: 2s
+    ## The image to use for running the domain mirroring job
+    image: registry.gitlab.com/safesurfer/core/apps/domain-mirror-sync:1.0.0
+    ## Log level
+    logLevel: info
+    ## The username prefix that will show in history entries when mirroring makes changes
+    ## to domains. The suffix will be the categorizer instance that the changes are from.
+    login:
+      username: Upstream-Categorizer
+    ## The resources to allocate to the job while running
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "1Gi"
+      limits:
+        cpu: "500m"
+        memory: "1.5Gi"
+
+  ## Configure syncing of IPs from other categorizer instances. Requires the adminApp to be enabled,
+  ## but not necessarily with an ingress.
+  ipMirroring:
+    ## IP mirroring may be disabled entirely if not used.
+    enabled: false
+    ## Specify a custom name, otherwise it's based on the name of the release
+    nameOverride:
+    ## Cron spec: when to mirror IPs. Ideally do this a day before domain mirroring to optimize load.
+    schedule: 0 0 * * 4
+    ## The duration before HTTP requests to the remote categorizer time-out. This includes downloading
+    ## the whole IP list. Parsed as a go duration,
+    ## https://golang.org/pkg/time/#ParseDuration
+    externalHTTPTimeout: 10m
+    ## The duration before HTTP requests to the local categorizer time-out. Parsed as a go duration,
+    ## https://golang.org/pkg/time/#ParseDuration
+    internalHTTPTimeout: 10s
+    ## The image to use for running the ip mirroring job
+    image: registry.gitlab.com/safesurfer/core/apps/ip-mirror-sync:1.0.0
+    ## Login details the mirroring job uses to communicate with the categorizer. Unlike domains, IPs
+    ## don't have a history yet so this doesn't show up anywhere.
+    login:
+      username: IPMirror
+      # Specify on CLI
+      accessKey:
+    ## The resources to allocate to the job while running
+    resources:
+      requests:
+        cpu: "25m"
+        memory: "128Mi"
+      limits:
+        cpu: "100m"
+        memory: "256Mi"
+
+  ## Configure auto-categorization of domains and URLs. This can be set up to automatically discover domains
+  ## in several ways, or used for manual analysis of sites.
+  autoCat:
+    ## Whether to enable auto-categorization. If disabled, it cannot be activated manually.
+    ## If this is enabled but "addFromDNS" is not, then auto-categorization can only be activated
+    ## manually. 
+    enabled: false
+    ## The max amount of queued crawl requests. This is enforced on the side of the admin app. Higher values
+    ## make the model training process more efficient.
+    maxQueued: 50
+    ## Whether to automatically add and auto-categorize new domains that are requested of the DNS. Not every new domain
+    ## is added, rather a heuristic targeting adult-looking domains is employed to decide which to add.
+    addFromDNS:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      ## Image to use for the new domain queue
+      image: registry.gitlab.com/safesurfer/core/categorizer/new-domain-queue:5.17.0
+      ## Defines how often to add new domains, and how many to add
+      ## each time. The duration portion (after the slash) is parsed by the go function
+      ## time.ParseDuration (https://golang.org/pkg/time/#ParseDuration).
+      ## 
+      ## The amount of domains to add should roughly equal the value of autoCat.crawlerWorker.maxConcurrentJobs, although
+      ## junk domains can waste some of this capacity.
+      ## The interval should roughly equal how long a domain takes to categorize.
+      ## Trying to add too many domains or too frequently will result in domains being added but not
+      ## auto-categorized.
+      interval: 10/10m
+      ## The port to listen on.
+      port: 8080
+      ## The port for the service to listen on.
+      svcPort: 8080
+      svcAnnotations:
+      ## The access key to use to access the categorizer. Specify on CLI.
+      categorizerAccessKey:
+      ## The username to use to access the categorizer. This will show in domain history entries.
+      categorizerUsername: Auto-Categorizer
+      ## How long to wait for categorizer requests before timing out
+      categorizerHTTPTimeout: 1m
+      ## How long to wait for domains to add. This is done asynchronously from
+      ## the HTTP request.
+      categorizerDomainAddJobTimeout: 10m
+      ## The queue checks the response codes of domains to see whether they're good to add.
+      domainChecking:
+        ## The minimum interval between one check completing and another starting. This does not
+        ## slow down the rate of new domains being added - higher values will just mean less domains
+        ## get checked.
+        interval: 2s
+        ## The maximum time to wait for a domain to return a good response code.
+        timeout: 2s
+      ## Show additional logging
+      debug: 'false'
+      ## The resources for the new domain queue. Memory requirements are proportional to the amount of
+      ## incoming traffic.
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "128Mi"
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+    ## Setup the model training process.
+    training:
+      ## The max amount of time to wait for the training process to initialize.
+      initTimeout: 5m
+      ## The max amount of time to wait between each training iteration. This is not the same as an epoch - this refers
+      ## to the iterative process of crawling all the domains necessary. The amount of iterations depends on the maxQueued
+      ## value above and also how many training domains there are.
+      iterationTimeout: 2m
+      ## The max amount of time to wait for the model training to take place, once all the data has been gathered.
+      trainTimeout: 10m
+    ## Setup the classification process.
+    classifications:
+      ## The max amount of queued classification requests.
+      maxQueued: 50
+      ## The timeout for adding the classification results to the db.
+      addTimeout: 20s
+    ## A crawlerWorker handles web crawling by spawning a new k8s job for every request, which provides true isolation
+    ## between browser instances, as well as resource restriction.
+    ## It may sit in a different cluster to the categorizer admin app itself as long as they
+    ## are both connected to the same redis instance. This may be desirable as crawling on a large scale is ideally done
+    ## inside a public cluster where every node has a different IP address, otherwise rate-limiting may affect things more.
+    crawlerWorker:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      image: registry.gitlab.com/safesurfer/core/apps/crawlerworker:5.18.1
+      ## The worker is never publicly exposed, this is for internal communication only.
+      port: 8080
+      svcPort: 80
+      svcAnnotations:
+      ## Resources for the worker itself. This doesn't do the actual crawling, so resources are small.
+      resources:
+        requests:
+          cpu: "30m"
+          memory: "32Mi"
+        limits:
+          cpu: "120m"
+          memory: "32Mi"
+      ## The max amount of crawl jobs to run concurrrently. Jobs can still be queued if we are over this limit.
+      maxConcurrentJobs: 10
+      ## Configure the crawler jobs themselves.
+      jobs:
+        ## Specify a custom name, otherwise it's based on the name of the release
+        nameOverride:
+        image: registry.gitlab.com/safesurfer/core/apps/crawler:5.18.0
+        ## The resources for each crawler instance. This contains a chrome process, so think big!
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "512Mi"
+          limits:
+            cpu: "250m"
+            memory: "512Mi"
+        ## Store temporary images such as screenshots of the page, canvases, etc. If not enabled, the crawler
+        ## will be more detectable because the images will be requested afterwards with different http headers.
+        ## You may wish to set an expiry time on the members of this bucket, because a large amount of data will
+        ## be collected. The data must be stored for long enough to be classified (a matter of minutes) but can
+        ## be stored for longer for analysis later. This means that you probably want to make this a different
+        ## bucket to the one used for the adminApp.
+        storage:
+          ## If false, crawl jobs that request extra images will fail.
+          enabled: false
+          ## Reference a key of providers.storage
+          provider:
+        ## Translate webpages in realtime.
+        translation:
+          ## If false, crawl jobs that ask for translation will fail.
+          enabled: false
+          ## Reference a key of providers.translation
+          provider:
+    ## The classifier performs actual classification on the data collected by the crawler. This runs as an autoscaling
+    ## deployment that communicates internally with the adminApp via redis. Like the crawlerworker, this can run in
+    ## the same or a separate cluster to the adminApp itself by configuring an internal or external redis connection.
+    classifier:
+      enabled: false
+      ## Specify a custom name, otherwise it's based on the name of the release
+      nameOverride:
+      image: registry.gitlab.com/safesurfer/core/apps/classifier:5.18.0
+      replicas: 1
+      hpa:
+        enabled: false
+        minReplicas: 1
+        maxReplicas: 10
+        targetAverageMemoryUtilization: 60
+        targetAverageCPUUtilization: 80
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1024Mi"
+      ## Configure required access to object storage containing the text classifier. This should be the same as
+      ## categorizer.adminApp.storage.
+      classifierStorage:
+        ## Reference a key of providers.storage
+        provider:
+      ## Configure required access to object storage containing crawl data. This should be the same as 
+      ## categorizer.autoCat.crawlerWorker.jobs.storage.
+      crawlerStorage:
+        ## Reference a key of providers.storage
+        provider:
+      ## The created category ID for adult content. Any sites containing images classified as adult
+      ## will be classified as this category. Must be specified for image-based adult site detection
+      ## to work.
+      adultCategoryID:
+      ## When classifying adult images, they are resized and tiled to fit the dimensions of the model
+      ## and ensure that enough area is covered. You can configure how this is done here. The general
+      ## tradeoff is:
+      ## - Less tiles is faster and uses less resources, but a smaller chance of finding positives.
+      ## - More tiles uses more resources and has a higher chance of false positives, but is more likely
+      ##   to find true positives.
+      ## The size of the model is 224 x 224.
+      imageTiling:
+        ## The maximum tile size in proportion to the model itself. E.g. a value of 10 will mean that
+        ## any image larger than 2240 x 2240 must be covered by multiple tiles in both directions.
+        ## Lower values result in more tiles, and images possibly being too zoomed in to provide
+        ## accurate predictions.
+        maxTileScale: 10
+        ## The minimum tile scale in proportion to the image. Effectively, lower values will "zoom in" on
+        ## images more up until the point where the tiles are the same size as the model. Should be <= 1.
+        ## If the minimim size ends up being larger than the maximum size, only the minimum will be used.
+        minTileScale: 0.5
+        ## The amount of scaling steps in between the smallest tile size
+        ## and the maximum tile size (specified above). E.g. if the image is 3000 x 3000 and all parameters
+        ## are their defaults, these tile sizes will be selected:
+        ## - 1500 x 1500 (3000 * 0.5)
+        ## - 1870 x 1870 (1 scale step in between)
+        ## - 2240 x 2240 (224 * 10)
+        scaleSteps: 1
+        ## For any given tile size (e.g. each of the above), the amount of extra tiles to add beyond the minimum that
+        ## would cover the image completely.
+        ## E.g. at the minimum size 1500, 2 tiles in each direction are needed to cover the image. So three even tiles
+        ## are used in each direction.
+        extraTiles: 1
+      ## Configure how sensitive the image model is. For each image, all of the subsections (detailed above)
+      ## are evaluated. Then, the average score from all of these classifications is computed for each category
+      ## below. The average score of each "adult" category is divided by the average score of the neutral category.
+      ## If it is above the values below, then it is classified as the adult category.
+      ## For example, a value of 1 means that if there is more total score for the category than neutral, it will be
+      ## predicted.
+      sensitivity:
+        suggestive: 1
+        explicit: 1
+      ## Integration with https://projectarachnid.ca/ to detect CSAM images.
+      csamChecker:
+        enabled: false
+        ## The created category ID for CSAM content. Any sites containing images classified as csam
+        ## will be classified as this category. Must be specified for image-based csam detection
+        ## to work.
+        categoryID:
+        ## The API key to the arachnid API. Specify on CLI.
+        apiKey:
+
+## Postgres is used for persistent data. You have two options for setting one up:
+##
+## 1. In-cluster database
+## If postgres-operator (https://github.com/zalando/postgres-operator) is installed in the cluster, we can generate
+## manifests to create the postgres database. This is handy for testing, but also production-ready.
+## This option makes it more difficult to migrate to another cluster, however, and may not be production-ready
+## on *all* platforms, but is quite good on the major ones.
+##
+## 2. External database
+## The deployment can connect to any available postgres database. Any version 11+ is supported.
+##
+db:
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## The current schema version. The argument is an image that runs migrations against the database.
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.4.0
+  ## Configure an external database connection, see above.
+  external:
+    ## Whether to use an external database. Either this or the in-cluster database must be enabled.
+    enabled: false
+    ## Connection details, specify on CLI:
+    pguser:
+    pgpassword:
+    pghost:
+    pgdb:
+    pgsslmode:
+  ## Configure the in-cluster database, see above.
+  inCluster:
+    ## Whether to use an in-cluster database. Either this or the external database connection must be enabled.
+    enabled: true
+    ## Name for the database.
+    name: safesurfer-db
+    ## The name of the user for the deployment. The password will be automatically generated and shared with any
+    ## internal parts that need it.
+    pguser: safesurfer
+    ## The name of the database for the deployment
+    pgdb: safesurfer
+
+    ## Resources
+    cpuRequest: "1"
+    memoryRequest: "3500Mi"
+    cpuLimit: "2"
+    memoryLimit: "3500Mi"
+
+    ## Define the storage the db uses
+    volume:
+      ## The size of the volume for each database pod. May be expanded later.
+      size: 12Gi
+      ## Define a custom storage class for the database to use. This is useful, for example,
+      ## to use SSDs instead of hard disks.
+      customStorageClass:
+        enabled: false
+        ## Reference an existing storage class by name. This is the right option if the desired storage class
+        ## already exists.
+        name:
+        ## Otherwise, define a custom storage class for the database to use.
+        ## metadata.name is automatically used by the database if defined.
+        spec:
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name:
+          provisioner:
+          parameters:
+            type:
+          allowVolumeExpansion: true
+    ## Extra parameters for the whole database cluster. Mostly anything here (https://postgres-operator.readthedocs.io/en/latest/reference/cluster_manifest/)
+    ## is valid. Do not set "numberOfInstances" to 1.
+    extraSpec:
+      numberOfInstances: 2
+      postgresql:
+        version: "14"
+    ## Configure the connection pooler for the cluster
+    connectionPooler:
+      cpuRequest: 100m
+      memoryRequest: 64Mi
+      cpuLimit: 200m
+      memoryLimit: 64Mi
+      ## Extra parameters to configure the connection pooler (mode cannot be overridden)
+      ## https://postgres-operator.readthedocs.io/en/latest/reference/cluster_manifest/#connection-pooler
+      extraSpec:
+        maxDBConnections: 150
+  ## Define backup jobs to external storage buckets.
+  ## S3 on EKS is supported by the operator directly.
+  backups:
+    ## Google Cloud Storage backup config. This places the output of pg_dump into a GCS bucket.
+    gcs:
+      enabled: false
+      ## Schedule to do backups
+      schedule: 0 6 * * *
+      ## Resource to allocate
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "256Mi"
+        limits:
+          cpu: "100m"
+          memory: "256Mi"
+      ## The name of the bucket to put backups into. Backups are placed in the root and named
+      ## according to the time they were taken, with the .sql file extension.
+      bucket:
+      ## Bucket access HMAC key and secret: Specify on CLI
+      hmac:
+        key:
+        secret:
+    ## Backup to any bucket that supports the S3 API, such as openstack.
+    genericS3:
+      enabled: false
+      ## Cronjob schedule to do backups
+      schedule: 0 6 * * *
+      ## Resource to allocate
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "256Mi"
+        limits:
+          cpu: "100m"
+          memory: "256Mi"
+      ## The name of the bucket to put backups into. Backups are placed in the root and named
+      ## according to the time they were taken, with the .sql file extension.
+      bucket:
+      ## The S3 API endpoint URL.
+      endpointURL:
+      ## Access key ID and secret. On openstack, you can obtain these using "openstack ec2 credentials create" where they
+      ## will be the "access" and "secret" fields respectively.
+      ## Specify on CLI.
+      accessKeyID:
+      accessKeySecret:
+
+## If the prometheus/grafana/loki monitoring stack is deployed in the cluster, dashboards
+## can be generated to display in grafana. Prometheus, grafana, and loki must be installed
+## for the dashboards to show anything.
+monitoring:
+  ## Whether to provision dashboards
+  enabled: false
+  ## The namespace where dashboards/ingress will be created: This should be the same namespace
+  ## as where Grafana is deployed.
+  ## Leave blank to deploy to the release namespace.
+  namespace:
+  ## The labels that should be given to each emitted config map. Should be the same as whatever
+  ## grafana is configured to look for. The default value is good if the monitoring tools
+  ## are installed according to the tutorial here:
+  ## https://gitlab.com/safesurfer/monitoring-stack
+  dashboardLabels:
+    grafana_dashboard: "1"
+  ## For convenience, configure the ingress allowing HTTP traffic to reach grafana from the internet.
+  ingress:
+    enabled: false
+    ## The name of the grafana backend service to connect to
+    svcName: grafana
+    ## The port of the grafana backend service to connect to
+    svcPort: 80
+    ## Rate limit requests
+    rateLimiting:
+      enabled: false
+      ## Requests per minute
+      rpm:
+    ## The hostname for grafana on the internet.
+    host:
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
+    ## Note that http01 tls method will likely not work when this is enabled.
+    whitelistSourceRange:
+    ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+    ## instance.
+    class: nginx
+    ## Configure TLS for grafana
+    tls:
+      http01: true
+      custom:
+        enabled: false
+        cert:
+        key:
+      secretName:
+
+## Since this chart is intended to be used in many environments, we specify how to provide for
+## the needs of the deployments here, including:
+## - Object storage (currently supports Google Cloud Storage, Azure Blobs)
+## - Text Translation (currently supports GCP translation API)
+## - Ip info API (currently supports ipstack and ipinfo)
+providers:
+  ## How to access object storage, used by the API (for the optional nudity detection feature),
+  ## the categorizer (for crawler image storage, if enabled).
+  ## Using redis is only recommended for some of these applications, because it isn't "supposed"
+  ## to be used as object storage but can be handy for testing or other things. Just keep in mind
+  ## the key size limit of 512MB and the fact that performance will be determined by how you've set
+  ## redis up, and that data isn't always persistent.
+  storage:
+    # azexample:
+    #   platform: azure
+    #   ## Which bucket should the deployments using this provider use?
+    #   bucketHint: example
+    #   secret: |
+    #     storageAccountUrl: https://<your_storage_account>.blob.core.windows.net
+    #     clientSecretCredential:
+    #       tenantId:
+    #       clientId:
+    #       clientSecret:
+    # gcsexample:
+    #   platform: gcp
+    #   ## Which bucket should the deployments using this provider use?
+    #   bucketHint: example
+    #   secret: |
+    #     credentials: |
+    #       {
+    #         "type": "service_account",
+    #         "project_id": "example-project-id-123",
+    #         "private_key_id": "example",
+    #         "private_key": "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----\n",
+    #         "client_email": "example@example-project-id-123.iam.gserviceaccount.com",
+    #         "client_id": "123",
+    #         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    #         "token_uri": "https://oauth2.googleapis.com/token",
+    #         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    #         "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/example%40example-project-id-123.iam.gserviceaccount.com"
+    #       }
+    # internalredisexample:
+    #   platform: redis
+    #   ## Use the internal redis instance under the top level key "redis". 
+    #   internal: true
+    #   ## The key prefix for stuff stored in here.
+    #   bucketHint: ss_apps
+    #   secret: |
+    #     # Set a key expiry on all elements, or leave blank to have no expiry.
+    #     expiry: 10m
+    # externalredisexample:
+    #   platform: redis
+    #   bucketHint: ss_apps
+    #   secret: |
+    #     # Set a key expiry on all elements, or leave blank to have no expiry.
+    #     expiry: 10m
+    #     # How to access redis, see docs here:
+    #     # https://pkg.go.dev/github.com/go-redis/redis/v8#ParseURL
+    #     url: redis://<user>:<password>@<host>:<port>/<db_number>
+  ## How to access a text translation API, only used (optionally) by the web crawler, see
+  ## categorizer.autoCat.crawlerWorker.jobs
+  translation:
+    # gcpexample:
+    #   platform: gcp
+    #   # The max length of text to allow. If text is submitted longer than
+    #   # this, it will be silently truncated to this length.
+    #   maxLen: 5000
+    #   secret: |
+    #     credentials: |
+    #       {
+    #         "type": "service_account",
+    #         "project_id": "example-project-id-123",
+    #         "private_key_id": "example",
+    #         "private_key": "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----\n",
+    #         "client_email": "example@example-project-id-123.iam.gserviceaccount.com",
+    #         "client_id": "123",
+    #         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    #         "token_uri": "https://oauth2.googleapis.com/token",
+    #         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    #         "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/example%40example-project-id-123.iam.gserviceaccount.com"
+    #       }
+    #     project: example-project-id-123
+  ## Details for an API providing ip geolocation. Optional, but used for auto-determining chargebee
+  ## plans for different regions, and tracking user logins.
+  ipinfo:
+    # # Example for ipstack (https://ipstack.com/)
+    # ipstackExample:
+    #   platform: ipstack
+    #   cacheSize: 1000
+    #   secret: |
+    #     accessKey:
+    #     timeout: 10s
+    #     ## Whether to use HTTPS, only supported for some plans
+    #     secure: true
+    # Example for ipinfo.io (https://ipinfo.io)
+    # ipinfoIoExample:
+    #   platform: ipinfoIo
+    #   cacheSize: 1000
+    #   secret: |
+    #     accessKey:
+    #     timeout: 10s
+
+## Configure the redis database. This is used for several things:
+## - Tracking the assocation between categories and IP addresses, if `dns.ipsetd` is enabled.
+## - As a work queue, if the `categorizer` components are enabled.
+## - May be used to store other temporary data such as images from crawled sites, if configured as an "object storage"
+##   provider, see the `providers.storage.internalredisexample/externalredisexample`.
+## If you don't need any of the above, there is no need to enable it.
+## You may use any externally hosted redis instance, or provision one as part of the deployment (internal),
+## but it must be version 6.2.7 at least.
+redis:
+  enabled: false
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## Create a new deployment for a single redis instance inside the cluster. This is not highly available or persistent,
+  ## but these are not necessary for the needs of the deployment.
+  internal:
+    enabled: true
+    resources:
+      requests:
+        memory: "100Mi"
+        cpu: "25m"
+      limits:
+        memory: "100Mi"
+        cpu: "100m"
+    ## Service type, change to LoadBalancer to allow external communication. If type is LoadBalancer and serviceAnnotations
+    ## is not set to make this an internal LoadBalancer, serviceAllowedSourceRanges should be set as serviceAllowedSourceRanges
+    ## is the ONLY form of security if exposing the IP publicly. 
+    serviceType: ClusterIP
+    ## Custom service annotations, for e.g. internal load balancer.
+    serviceAnnotations:
+    ## Expects an array of CIDR ranges that will be allowed to access the redis instance.
+    serviceAllowedSourceRanges:
+  ## Connect to an externally hosted redis instance.
+  external:
+    enabled: false
+    ## Expects a URL in this format:
+    ## https://pkg.go.dev/github.com/go-redis/redis/v8#ParseURL
+    ## Specify on CLI.
+    url:
+
+## AlphaSOC is an optional feature to generate security alerts based on DNS usage data.
+## These security alerts are available through the `api`. You must also set up the alphasoc
+## backend within `dns.clickhoused` for this to work, as well as the clickhouse backend.
+## It is recommended to use the API's quota feature to limit the amount of unique endpoints
+## that can receive security alerts per user, as Alphasoc's pricing model scales according
+## to this metric.
+## https://alphasoc.com
+alphasoc:
+  enabled: false
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## The API key, which must be given by AlphaSOC.
+  ## Specify on CLI.
+  apiKey:
+  ## Host alphasoc internally. Only option for now.
+  internal:
+    enabled: true
+    image: registry.gitlab.com/safesurfer/core/apps/alphasoc-ae:1.0.0
+    bindPort: 8080
+    svcPort: 80
+    svcAnnotations:
+    ## How long alerts are kept in the database for before being deleted. You should ensure
+    ## that .alphasoc.sync.schedule is frequent enough to grab the alerts before they are
+    ## deleted. Ideally sync should be able to run some amount of times within this time as
+    ## well, otherwise if something goes down alerts will be lost.
+    ## When a customer is deleted, we cannot delete their data from alphasoc directly, so
+    ## a short retention period is the workaround.
+    alertsRetentionDuration: 24h
+    ## Required: persistent storage for the alphasoc DB.
+    persistence:
+      ## Optionally define the name of a storage class that will be used for the alphasoc
+      ## data directory.
+      storageClassName:
+      ## Optionally define a custom storage class that will be owned by the deployment
+      ## (meaning it will be removed if the chart is uninstalled) and used by alphasoc,
+      ## unless storageClassName is defined above.
+      ## Must be a valid storage class object: https://kubernetes.io/docs/concepts/storage/storage-classes/
+      storageClass:
+      ## Size of the volume for alphasoc.
+      size: 5Gi
+    ## Resource requests/limits for alphasoc
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "50m"
+      limits:
+        memory: "1Gi"
+        cpu: "150m"
+  ## Cronjob that makes alphasoc alerts available for each user via the API.
+  sync:
+    ## Cron spec: when to sync alerts. As most other cronjobs start on the hour, start at half past.
+    ## See also .alphasoc.internal.alertsRetentionDuration
+    schedule: 30 * * * *
+    ## The image to use for alert sync
+    image: registry.gitlab.com/safesurfer/core/apps/alphasync:1.0.2
+    ## Configure various timeouts, parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration.
+    timeouts:
+      ## The max amount of time for the entire cronjob.
+      main: 59m
+      ## The max amount of time for requests to alphasoc.
+      alphasoc: 1m
+      ## The max amount of time for each clickhouse query.
+      clickhouse: 10s
+      ## The max amount of time for each database query.
+      postgres: 10s
+    ## How much to log
+    logLevel: info
+    ## The resources to allocate to the job while running
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "16Mi"
+      limits:
+        cpu: "100m"
+        memory: "32Mi"
+
+## Configure clickhouse, the database for DNS logging. This is used to provide usage data and analytics.
+## Like postgres, this can be hosted in-cluster or connected to an external instance.
+clickhouse:
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## A container to bring up the schema of the instance. This is effectively the schema version of the clickhouse instance.
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/clickhouse-config:1.0.0
+  ## External hosting
+  external:
+    enabled: false
+    connection:
+      ## Whether to use TLS. If so, port should be set to 9440.
+      ## If false, port should be set to 9000.
+      secure: false
+      host:
+      port:
+      database:
+      ## Specify on CLI
+      username:
+      password:
+  ## Internal hosting
+  internal:
+    enabled: false
+    ## Image to use for clickhouse. This isn't safe surfer specific, our schema is specified above.
+    image: yandex/clickhouse-server:21.3
+    ## Username/password: specify on CLI
+    username:
+    password:
+    ## Configure persistent data
+    persistence:
+      enabled: true
+      ## Storage class to use
+      storageClass: default
+      ## Size of storage to allocate. This can be expanded later.
+      size: 10Gi
+    ## Resources to allocate. Clickhouse can happily use a lot of resources (more than the defaults here for
+    ## a decent amount of traffic).
+    resources:
+      requests:
+        cpu: 1
+        memory: 1Gi
+      limits:
+        cpu: 2
+        memory: 1Gi
+    ## Due to the large resource requirements, it may be desirable to host clickhouse on a separate node pool.
+    nodeSelector: {}
+    tolerations: []
+
+## Configure the frontend. This is a Vue PWA that communicates with the API to provider users with a management
+## interface. To build your own frontend, you can fork it from https://gitlab.com/safesurfer/dashboard and tag
+## and build your own version, which you provide to the `image` parameter below. You can also build your own frontend
+## entirely and leave this disabled.
+frontend:
+  ## Whether to enable the frontend.
+  enabled: false
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## The amount of replicas to deploy. Overridden by the hpa if enabled.
+  replicas: 2
+  ## The container image to use.
+  image: registry.gitlab.com/safesurfer/dashboard:1.3.1
+  ## Image pull secret to use, if the image is private.
+  imagePullSecret:
+    # registry:
+    # username:
+    # password:
+    # email:
+  ## Define extra locations from which scripts may be loaded. Space-separated.
+  extraScriptSrc: "https://js.chargebee.com"
+  ## The port for pods to listen on.
+  port: 8080
+  ## The port for the service to listen on.
+  svcPort: 8080
+  svcAnnotations:
+  ## Whether to create a Network Endpoint Group for the frontend on the Google Cloud Platform.
+  isGCPNEG: false
+  ## The frontend is responsible for router registration. Configure how to register.
+  routerConfig:
+    ## The frontend will auto-detect when on a router network, as long as .protocolChecker.domains.router
+    ## is configured. Set the URL that the frontend will link to in order to show the router UI.
+    routerLink: http://192.168.8.1
+    ## The role (see api.rolesConfig) that the router will authenticate as. Defines the API endpoints
+    ## that the router may be allowed to access.
+    role: router
+    ## The frontend will redirect back to the router when the initial auth is done, and the URL
+    ## will contain some slightly sensitive parameters. To prevent bad actors getting these, we will
+    ## only redirect to URLs with the following prefixes:
+    allowedRedirectHostPrefixes:
+    # - 'http://192.168.8.1/login'
+    # - 'http://localhost:' # For testing, port mandatory to avoid exploits
+    # - 'http://mydevice.safesurfer.co.nz/login'
+    # - 'http://homenetwork.safesurfer.io/login'
+
+  ## If specified, use this base API URL instead of the value of `api.ingress.host`.
+  apiHostOverride:
+  ## If specified, use this base admin app URL instead of the value of `categorizer.adminApp.ingress.host`.
+  ## Admin app connection is optional for the dashboard, only used to anonymously query domains like the
+  ## block page.
+  adminAppHostOverride:
+
+  ## Configure the ingress, allowing HTTP traffic to reach the frontend from the internet.
+  ingress:
+    enabled: false
+    ## The hostname for the frontend on the internet.
+    host:
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
+    ## Note that http01 tls method will likely not work when this is enabled.
+    whitelistSourceRange:
+    ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+    ## instance.
+    class: nginx
+    ## Configure TLS for the frontend
+    tls:
+      http01: true
+      custom:
+        enabled: false
+        cert:
+        key:
+      secretName:
+
+  ## The resources to allocate.
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+  ## Horizontal autoscaling
+  hpa:
+    enabled: false
+    ## Min/max replicas
+    minReplicas: 2
+    maxReplicas: 10
+    ## Target utilizations
+    targetAverageMemoryUtilization: 60
+    targetAverageCPUUtilization: 80
+
+## Configure the block page. When a page is blocked, the DNS redirects the user to the block page.
+## This shows the category of the blocked site. This will only work if the user tried to access
+## the blocked site over a regular http connection, not https. If the user tried to access the blocked
+## site over https, they will have to go through a security prompt before viewing. For this reason,
+## the block page uses a self-signed certificate because it won't have a valid one anyway.
+## The block page also uses its own load balancer instead of the ingress because the DNS needs
+## a unique IP to redirect to.
+blockpage:
+  ## Whether to enable the blockpage
+  enabled: false
+  ## The domain of the blockpage. This may be specified without enabling the block page in this cluster to
+  ## host the block page somewhere else. If hosted in this cluster, must be pointed at the right IP after deployment.
+  domain:
+  ## Specify a custom name, otherwise it's based on the name of the release
+  nameOverride:
+  ## Namespace to place resources in
+  namespace: block-page
+  ## Amount of instances to deploy. Overridden by the hpa if specified.
+  replicas: 2
+  ## Image to use for the block page.
+  image: registry.gitlab.com/safesurfer/block-page:1.0.0
+  ## Image pull secret to use, if the image is private.
+  imagePullSecret:
+    # registry:
+    # username:
+    # password:
+    # email:
+  ## Resources to allocate.
+  resources:
+    requests:
+      memory: "16Mi"
+      cpu: "50m"
+    limits:
+      memory: "32Mi"
+      cpu: "100m"
+  ## Horizontal autoscaling
+  hpa:
+    ## Whether to horizontally autoscale
+    enabled: false
+    ## Min/max instances
+    minReplicas: 2
+    maxReplicas: 10
+    ## Target utilizations before scaling up, %
+    targetAverageMemoryUtilization: 60
+    targetAverageCPUUtilization: 80
+  ## Define a minimum amount of available instances
+  pdb:
+    enabled: false
+    ## Amount that must be available
+    minAvailable: 1
+
+## Configure the protocol checker - this is used from a client to check if Safe Surfer DNS is active,
+## and if so, which protocol is being used currently. This works by defining five dummy domains, one
+## for each DNS protocol:
+## - Plain
+## - DNSCrypt
+## - DOH
+## - DOT
+## - Router, which is not really a protocol, but uses the same method to detect when the user is on a
+##   router running our router integration.
+## If the relevant DNS service gets a request for one of these domains, it will CNAME to the "active" domain, which
+## just returns a static response to indicate success.
+## Unlike the dummy domains, the active one should exist in real DNS records.
+protocolchecker:
+  ## Whether to host the protocol checker. The DNS may still cname the relevant domains below even if not hosted
+  ## in the same cluster, for e.g. multi-cluster setups.
+  enabled: false
+  ## Domains to redirect based on protocol: The domain for the specified protocol
+  ## will be CNAMEd to the "active" domain. Only the active domain should exist as
+  ## an actual DNS record. All must share a subdomain specified by the "base" domain,
+  ## e.g. if base is "proto.example.com" and active is "active", the full domain for
+  ## active would be active.proto.example.com. This setup is used so we can use a
+  ## single certificate for all domains. 
+  domains:
+    base:
+    active: active
+    plain: plain
+    dnscrypt: dnscrypt
+    doh: doh
+    dot: dot
+    router: router
+  ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+  ## instance.
+  ingressClass: nginx
+  ## Config for generating a valid HTTPS cert for the dummy domains even though they don't exist outside
+  ## Safe Surfer DNS.
+  tls:
+    ## HTTP validation is not supported since these domains don't really exist.
+    custom:
+      enabled: true
+      cert:
+      key:
+    secretName:
+  ## How many instances to run. Overridden by HPA if present.
+  replicas: 1
+  ## Image to use to serve requests.
+  image: registry.gitlab.com/safesurfer/core/protocol-checker:0.3
+  ## Resources (this doesn't consume very much)
+  resources:
+    requests:
+      memory: "10Mi"
+      cpu: "10m"
+    limits:
+      memory: "16Mi"
+      cpu: "50m"
+  ## Configure horizontal autoscaling
+  hpa:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetAverageMemoryUtilization: 80
+    targetAverageCPUUtilization: 80
+
+## Configure support for cert-manager to automatically generate and renew TLS certificates.
+## See the readme for installation instructions of cert-manager.
+certmanager:
+  letsencrypt:
+    ## The email for letsencrypt to contact in the event of issues. Only for generated HTTP01 certs.
+    email:
+
+## Add any custom manifests to your release. You can put anything here, so generally make sure it's part of the same
+## namespace as the release and be careful. This is useful to e.g. bundle a TLS certificate or cert-manager manifests
+## with the release.
+customManifests: []
+
+## Configure internationalization (i18n) support. This is a work-in-progress, only used in some sections of the API.
+i18n:
+  ## Only en is currently supported
+  defaultLanguage: en
+
+## Used for testing to override recommended behavior.
+testFlags:
+  api:
+    noSendgrid: false

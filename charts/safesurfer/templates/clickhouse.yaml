@@ -1,0 +1,71 @@
+{{- if .Values.clickhouse.internal.enabled }}
+apiVersion: "clickhouse.altinity.com/v1"
+kind: "ClickHouseInstallation"
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}
+spec:
+  defaults:
+    templates:
+      # Always create internal service
+      serviceTemplate: svc-template
+      # Always need pod template
+      podTemplate: pod-template
+      {{- if .Values.clickhouse.internal.persistence.enabled }}
+      dataVolumeClaimTemplate: data-volumeclaim-template
+      {{- end }}
+  configuration:
+    clusters:
+      - name: clickhouse
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+    users:
+      {{ .Values.clickhouse.internal.username }}/password_sha256_hex: {{ .Values.clickhouse.internal.password | sha256sum }}
+      {{ .Values.clickhouse.internal.username }}/profile: default
+      {{ .Values.clickhouse.internal.username }}/quota: default
+      {{ .Values.clickhouse.internal.username }}/networks/ip: ::/0
+  templates:
+    # Always need pod template
+    podTemplates:
+      - name: pod-template
+        spec:
+          {{- if .Values.clickhouse.internal.tolerations }}
+          tolerations:
+          {{- toYaml .Values.clickhouse.internal.tolerations | nindent 10 }}
+          {{- end }}
+          {{- if .Values.clickhouse.internal.nodeSelector }}
+          nodeSelector:
+            {{- toYaml .Values.clickhouse.internal.nodeSelector | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: clickhouse
+              image: {{ .Values.clickhouse.internal.image }}
+              resources:
+                requests:
+                  cpu: {{ .Values.clickhouse.internal.resources.requests.cpu }}
+                  memory: {{ .Values.clickhouse.internal.resources.requests.memory }}
+                limits:
+                  cpu: {{ .Values.clickhouse.internal.resources.limits.cpu }}
+                  memory: {{ .Values.clickhouse.internal.resources.limits.memory }}
+    # Always create internal service
+    serviceTemplates:
+      - name: svc-template
+        generateName: {{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}-internal
+        spec:
+          ports:
+          - name: tcp
+            port: 9000
+          type: ClusterIP
+    {{- if .Values.clickhouse.internal.persistence.enabled }}
+    volumeClaimTemplates:
+      - name: data-volumeclaim-template
+        spec:
+          storageClassName: {{ .Values.clickhouse.internal.persistence.storageClass }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.clickhouse.internal.persistence.size }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+{{- define "storageProviderObject" }}
+{{- $redisNamespace := include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.redis.namespace) }}
+{{- $redisName := include "name" (dict "Release" .Release "name" "redis" "nameOverride" .Values.redis.nameOverride)}}
+{{- with index .Values.providers.storage .key }}
+bucketHint: {{ .bucketHint }}
+{{- if eq .platform "gcp" }}
+gcs:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "azure" }}
+azBlob:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "redis" }}
+redis:
+{{- .secret | nindent 2 }}
+  {{- if .internal }}
+  url: redis://{{ $redisName }}-svc.{{ $redisNamespace }}.svc.cluster.local:6379/0
+  {{- end }}
+{{- else }}
+{{- fail "that storage platform is not supported" }}
+{{- end }}
+{{- end }}
+{{- end }}

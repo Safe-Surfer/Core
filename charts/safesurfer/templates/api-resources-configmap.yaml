@@ -1,0 +1,15 @@
+{{- if .Values.api.enabled }}
+---
+#
+# Configmap for resources (currently email templates).
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-resources
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+data:
+  strings-override.yaml: |-
+    ---
+    {{- toYaml .Values.api.strings | nindent 4 }}
+{{- end }}
