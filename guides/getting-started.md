@@ -18,7 +18,7 @@ You will also need to install [Helm](https://helm.sh), the package manager for K
 Once Helm is up and running, add the Safe Surfer repo:
 
 ```sh
-helm repo add safesurfer https://safe-surfer.github.io/core
+helm repo add safesurfer https://safe-surfer.github.io/Core
 ```
 
 Next, create a `values.yaml` file in the directory of your choosing. Add your image pull secret at the beginning of the file:
