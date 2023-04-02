@@ -6,3 +6,4 @@
 - Deploy to a namespace using the Helm `--namespace` argument.
 - When managing multiple deployments, use a different release name and/or namespace for each to prevent applying changes to the wrong deployment.
 - If using non-managed users, consider setting a `api.accounts.newAccountPolicy` and `api.accounts.forceEmailOtpOnUnknownIpField`. You can set `forceEmailOtpOnUnknownIpField` to `IP` to force two factor authentication via email when the user attempts to sign in from a new IP without having to set up an ipinfo provider.
+- Enable database backups. If using an `inCluster` database, see `db.backups` in [values.yaml](../charts/safesurfer/values.yaml). If on AWS, the postgres operator supports backups directly. You can backup clickhouse by snapshotting the backing volume directly.
