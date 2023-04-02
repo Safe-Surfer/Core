@@ -361,7 +361,7 @@ The DNS can run on any linux OS supporting systemd and docker. It only requires 
 
 Rename the binary to `ss-config`, ensure it has execute permissions, and move it to your path. Alternatively you can use it directly from the download location.
 
-Grab a copy of the default values for `ss-config` from `ss-config/values.yaml` in this repo, and name it `server-values.yaml` in your working directory. Note that `ss-config` doesn't *quite* work like `helm` - your `server-values.yaml` isn't overriding the defaults, but rather it *is* the values, which is why we're copying the whole file.
+Grab a copy of the default values for `ss-config` from [ss-config/values.yaml](../ss-config/values.yaml) in this repo, and name it `server-values.yaml` in your working directory. Note that `ss-config` doesn't *quite* work like `helm` - your `server-values.yaml` isn't overriding the defaults, but rather it *is* the values, which is why we're copying the whole file.
 
 To start with, copy your existing image pull secret:
 ```yaml
