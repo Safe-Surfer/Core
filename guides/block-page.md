@@ -1,19 +1,19 @@
 # Block Page
 Setting up a block page shows your users when a website has been blocked, rather than just failing the request. As observed in the Getting Started guide, when a block page isn't set up, DNS requests to blocked domains will time out. There are two choices for fixing this:
-1. CNAME to a non-existent domain e.g. `block.example.com`, which will fail requests instantly with an NXDOMAIN error.
+1. Reply with NXDOMAIN when a domain is blocked.
 2. Host the block page, which will show a message and category for the domain in the user's browser, unless the blocked site is using HSTS or the browser otherwise expects HTTPS. Users can use the API to choose NXDOMAIN for their account if they prefer it.
 
 ## Using NXDOMAIN
 To use this method, just add the following snippet to your `values.yaml` and upgrade the release:
 ```yaml
 blockpage:
-  # The domain you choose here must not exist if you want to return NXDOMAIN
-  domain: block.example.com
+  domain: ''
+  enabledForUsersByDefault: false
 ```
 
 This works for either the Helm chart or `ss-config` values.
 
-## Hosting the block page
+## Using the block page
 To CNAME to any other page, e.g. one hosted elsewhere, just add the domain in the same way as above:
 ```yaml
 blockpage:
@@ -43,7 +43,7 @@ safesurfer-block-page       LoadBalancer   10.0.201.163   xx.xxx.xxx.xx   80:315
 
 Now you can create a DNS entry for the domain of your block page (should match `blockpage.domain`) pointing to the new external IP address.
 
-For the block page to function properly, it is required that the `categorizer.adminApp` should have an ingress enabled. This is because the block page uses the [public search](https://safesurfer.gitlab.io/admin-app-api-docs/#tag/domains/operation/getPublicSearch) API endpoint of the admin app to determine the category of the website the user has been blocked from. This would not be possible to host on the user API, because that enforces CORS. The admin app has no need to enforce CORS because all non-public endpoints require username/password authentication. After enabling the `categorizer.adminApp.ingress` according to [ingress and cert setup](./ingress-and-cert-setup.md), the block page will automatically connect to the hostname you specify for the ingress. With the admin app ingress enabled, you can use the `categorizer.adminApp.authIpWhitelist` parameter to enhance its security while preserving the functionality of the block page.
+For the block page to function properly, it is required that the `categorizer.adminApp` should have an ingress enabled. This is because the block page uses the [public search](https://safesurfer.gitlab.io/admin-app-api-docs/#tag/domains/operation/getPublicSearch) API endpoint of the admin app to determine the category of the website the user has been blocked from. This would not be possible to host on the user API, because that enforces CORS. The admin app has no need to enforce CORS because all non-public endpoints require username/password authentication, and optionally an IP whitelist. After enabling the `categorizer.adminApp.ingress` according to [ingress and cert setup](./ingress-and-cert-setup.md), the block page will automatically connect to the hostname you specify for the ingress. With the admin app ingress enabled, you can use the `categorizer.adminApp.authIpWhitelist` parameter to enhance its security while preserving the functionality of the block page.
 
 Once the admin app ingress has been enabled and any DNS entries have propagated, you should be able to enter the domain or IP address of your block page in your browser to view it. The default block page is unbranded and should look something like this:
 

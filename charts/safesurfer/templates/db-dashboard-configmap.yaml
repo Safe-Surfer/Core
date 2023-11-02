@@ -78,19 +78,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_user_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}[5m]) * 100",
+              "expr": "rate(container_cpu_user_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -187,19 +187,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -271,7 +271,7 @@ data:
           },
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"postgres\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -326,19 +326,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_user_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}[5m]) * 100",
+              "expr": "rate(container_cpu_user_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -430,19 +430,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -513,7 +513,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"connection-pooler\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -569,7 +569,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"postgres-operator\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"postgres-operator\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
@@ -664,7 +664,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"postgres-operator\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"postgres-operator\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
@@ -736,7 +736,7 @@ data:
           },
           "targets": [
             {
-              "expr": "{namespace=\"postgres-operator\"}",
+              "expr": "{ namespace=\"postgres-operator\"}",
               "refId": "A"
             }
           ],
@@ -769,7 +769,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-migrations\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-migrations\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -824,19 +824,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_user_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}[5m]) * 100",
+              "expr": "rate(container_cpu_user_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -928,19 +928,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -1011,7 +1011,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -1049,7 +1049,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}",
-      "uid": "akulhaArt",
+      "uid": null,
       "version": 1
     }
 {{- end }}

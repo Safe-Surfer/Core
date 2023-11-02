@@ -15,7 +15,11 @@ metadata:
   {{- else }}
   name: {{ .name }}-cert
   {{- end }}
+  {{- if .forceNamespace }}
+  namespace: {{ .namespace }}
+  {{- else }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .namespace) }}
+  {{- end }}
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
@@ -24,7 +28,7 @@ spec:
       {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
       name: letsencrypt-prod-{{ .name }}
       {{- else }}
-      name: {{ .name }}-cert
+      name: {{ .name }}-private-key
       {{- end }}
     solvers:
     - http01:
@@ -45,7 +49,11 @@ metadata:
   {{- else }}
   name: {{ .name }}-cert
   {{- end }}
+  {{- if .forceNamespace }}
+  namespace: {{ .namespace }}
+  {{- else }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .namespace) }}
+  {{- end }}
 spec:
   {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
   secretName: letsencrypt-prod-{{ .name }}

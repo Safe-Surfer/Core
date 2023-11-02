@@ -1,5 +1,5 @@
 # Considerations for production
-- Make sure to enable [monitoring](./monitoring.md) and monitor the deployments for errors and resource usage. You can create alerts using [prometheus alert manager](https://prometheus.io/docs/alerting/latest/overview/) which is installed if following the instructions on the [monitoring](./monitoring.md) guide.
+- Make sure to enable [monitoring & alerting](./monitoring-and-alerting.md) and monitor the deployments for errors and resource usage. You can create alerts using [prometheus alert manager](https://prometheus.io/docs/alerting/latest/overview/) which is installed if following the instructions on the [monitoring](./monitoring-and-alerting.md) guide.
 - Enable [Horizontal Pod Autoscalers](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) and [Pod Disruption Budgets](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#pod-disruption-budgets) where supported.
 - Regularly rotate keys such as the `categorizer.adminApp.admin.password` or `api.adminSecret`.
 - When upgrading a release, compare the generated manifests to what they were before to prevent accidental changes. You can do this easily using the [Helm diff](https://github.com/databus23/helm-diff) plugin.

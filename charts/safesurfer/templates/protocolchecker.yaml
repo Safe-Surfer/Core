@@ -70,11 +70,34 @@ spec:
 # HPA, if configured.
 #
 {{ if .Values.protocolchecker.hpa.enabled }}
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+spec:
+  maxReplicas: {{ .Values.protocolchecker.hpa.maxReplicas }}
+  minReplicas: {{ .Values.protocolchecker.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.protocolchecker.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.protocolchecker.hpa.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}
@@ -95,6 +118,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.protocolchecker.hpa.targetAverageCPUUtilization }}
+{{- end }}
 {{ end }}
 ---
 #

@@ -104,7 +104,7 @@ After deploying something like the above, remembering to set up certs, you shoul
 
 ```
 NAME                                              READY   STATUS        RESTARTS         AGE
-safesurfer-dns-76fbd7cf8f-8ftqq                   6/6     Running       0                13s
+safesurfer-dns-76fbd7cf8f-8ftqq                   5/5     Running       0                13s
 ```
 
 And run `kubectl get service` to see your new service IP:

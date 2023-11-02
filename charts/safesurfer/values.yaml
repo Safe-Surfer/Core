@@ -44,7 +44,7 @@ dns:
     ## Amount of pods to deploy. Overridden by the hpa if present.
     replicas: 2
     ## Container image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns:1.15.4
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.16.0
     ## How to roll out new versions
     deploymentStrategy:
       rollingUpdate:
@@ -61,10 +61,23 @@ dns:
     ## outgoing queries originating from the cluster itself. However, this is rarely a problem, unless you
     ## block certain TLDs (e.g. `local` or `service`) by default, which is not recommended with this setup.
     bindPort: 53530
+    ## The address to listen on.
+    localAddress: '0.0.0.0' # Or for IPv6: '0.0.0.0,::'
+    ## The address to send outgoing queries on.
+    queryLocalAddress: '0.0.0.0' # Or for IPv6: '0.0.0.0,::'
     ## Launch this number of threads. These are used for handling UDP questions and doing remote lookups.
     threads: 4
     ## https://doc.powerdns.com/authoritative/settings.html#distributor-threads
     distributorThreads: 8
+    ## Recommended sysctl settings to apply for DNS performance and stability. These are non-namespaced settings,
+    ## meaning that they have the potential to affect other cluster workloads.
+    sysctls:
+      enabled: false
+      ## These should be strings even if they are logically numbers
+      settings:
+        net.netfilter.nf_conntrack_max: '5000000'
+        net.netfilter.nf_conntrack_udp_timeout: '3'
+        net.ipv6.route.max_size: '2147483647'
     ## The amount of seconds to allow pre-stop hooks to complete before actually stopping the 
     ## DNS pod.
     ## This becomes relevant when running DNS using host networking and a non-kubernetes load balancer.
@@ -83,30 +96,35 @@ dns:
     ## Comma separated CIDR ranges to allow requests from. Default: allow everything.
     allowFrom: 0.0.0.0/0,::/0
     ## How much to log. https://docs.powerdns.com/recursor/settings.html#setting-loglevel
-    logLevel: 9
+    logLevel: 6
     ## Whether to block firefox DOH for clients connected to this resolver.
     blockFirefoxDOH: true
     ## Config to allow debugging
     debugging:
       ## A domain that, if queried for TXT records, will return details of the current account.
-      accountQueryDomain:
+      accountQueryDomain: account.safesurfer
       ## A domain that, if queried for TXT records, will return the current DNS protocol.
-      protoQueryDomain:
+      protoQueryDomain: proto.safesurfer
       ## A domain that is treated like a TLD - if a domain is prepended and the resulting domain
       ## queried for a TXT record, the DNS will return the current configuration of that domain.
       ## e.g. ` dig -t TXT youtube.com.domain.safesurfer ` if "domain.safesurfer" if used.
-      domainLookupDomain:
+      domainLookupDomain: domain.safesurfer
       ## A domain for checking what action will occur if the domain is queried. It's a TLD,
       ## used like domainLookupDomain.
-      explainDomain:
+      explainDomain: explain.safesurfer
     ## Configure how much to log for anonymous requests, e.g. where we can't recognize
     ## an account. These can be accessed through clickhouse directly.
     ## The default is to not log anonymous traffic.
     anonymousLogging:
-      ## Log categories and IPs of anonymous requests.
+      ## Log categories of anonymous requests, and domains of blocked requests.
       enabled: false
-      ## Log domains for anonymous accounts as well.
+      ## Always log domains for anonymous requests.
       fullHistoryEnabled: false
+      ## When users turn logging off using the API, should their requests
+      ## be logged anonymously instead? If true, logging is turned off
+      ## completely when users opt out. If false, user requests are logged
+      ## anonymously instead when users opt out.
+      allowOptOut: true
     ## Whether to scale horizontally: this will schedule more pods, which if configured, will cause the node
     ## pool to scale also (if configured).
     horizonalPodAutoscaler:
@@ -170,6 +188,24 @@ dns:
         port: 30053
         externalIPs: []
         annotations:
+    ipv6Service:
+      ## Kubernetes does not (yet) support TCP+UDP on the same external port and IP, so we
+      ## need two separate services.
+      tcp:
+        enabled: false
+        type: NodePort
+        port: 30153
+        externalIPs: []
+        ## If specified, claim a particular load balancer IP
+        loadBalancerIP:
+        ## Any extra annotations to add to the service
+        annotations:
+      udp:
+        enabled: false
+        type: NodePort
+        port: 30053
+        externalIPs: []
+        annotations:
     ## Resources for the DNS container. This scales depending on the amount of DNS traffic and the variety
     ## of domains requested.
     resources:
@@ -187,49 +223,59 @@ dns:
       testTimeout: 4
     sidecarContainers:
       ## LMDB manager shares a memory-mapped space with the DNS container and manages the contents
-      ## of LMDB. The DNS container reads from LMDB to make blocking decisions. Two instances of this are run:
-      ## one for account data, and one for domain data. These update domains/accounts on separate periodic
-      ## intervals, and also live update as changes are made from the api/categorizer.
+      ## of LMDB. The DNS container reads from LMDB to make blocking decisions. Domains/accounts/categories are
+      ## updated on separate periodic intervals, and also live update as changes are made from the api/categorizer.
+      ## Most config from dns.dns.initContainers.initLmdb also applies to the sidecar container, although `accountSegmentation`
+      ## config may be different.
       lmdbManager:
+        ## If enabled, when accounts are fully rebuilt, they are done in batches instead
+        ## of all at once. When segmentation is enabled, the time for a full rebuild scales
+        ## with the amount of users, and the memory usage remains the same. When segmentation
+        ## is disabled, the time for a full rebuild scales better, but memory usage grows
+        ## with the amount of accounts.
+        accountSegmentation:
+          enabled: true
+          size: 30_000
+        ## Run a full rebuild of accounts this often, starting from when the DNS starts.
+        accountFullRebuildInterval: 12h
+        ## Run a full rebuild of categories this often, starting from when the DNS starts.
+        categoryFullRebuildInterval: 30m
+        ## Run a full rebuild of category options this often, starting from when the DNS starts.
+        categoryOptionFullRebuildInterval: 30m
+        ## Run a full rebuild of domains this often, starting from when the DNS starts.
+        domainFullRebuildInterval: 24h
+        ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
+        ## but prevents live updates from working while a full domain rebuild is running.
+        streamDomains: true
         ## Extra environment variables for lmdb manager.
         extraEnv: []
         ## Container image to use for lmdb manager.
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+        logLevel: info
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2
         securityContext:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
           privileged: false
           runAsUser: 250
           runAsGroup: 250
-        ## Resources for each container. Domains/accounts can have very different usage characteristics.
-        ## There is often much more domain data, so this container takes more memory, and also more CPU to rebuild
-        ## the data, but updates happen less frequently. Account rebuilds happen much more frequently
-        ## but don't hold as much data (generally).
+        ## Resources to allocate LMDB manager.
         ## The combination of these resources and the DNS container resources also combine to constitute the resources
         ## available to each init container. The main resource-using init container is the initial LMDB build,
         ## so it's logical that running full account/domain rebuilds in parallel would at least cover the resources
         ## of doing each in series like the init container does. See https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#resources
         resources:
-          domains:
-            requests:
-              memory: "1536Mi"
-              cpu: "100m"
-            limits:
-              memory: "1536Mi"
-              cpu: "200m"
-          accounts:
-            requests:
-              memory: "1536Mi"
-              cpu: "100m"
-            limits:
-              memory: "1536Mi"
-              cpu: "200m"
+          requests:
+            memory: "3072Mi"
+            cpu: "100m"
+          limits:
+            memory: "3072Mi"
+            cpu: "750m"
       ## The health check container is queried by kubernetes to determine whether the DNS server is running
       ## properly. If the health check fails, the DNS pod will be restarted. You can open up the health check
       ## to e.g. an external load balancer.
       healthCheck:
         ## Image to use
-        image: registry.gitlab.com/safesurfer/core/apps/status:1.0.0
+        image: registry.gitlab.com/safesurfer/core/apps/status:1.1.0
         ## Port to bind to on the pod (for HTTP)
         bindPort: 8080
         ## Optional secret that must be defined in the URL for the API to respond and check health.
@@ -274,21 +320,160 @@ dns:
     initContainers:
       ## Required: run lmdb manager initially to build the database before running the DNS pod.
       initLmdb:
+        ## The max amount of open/idle connections to use when connecting to the database.
+        ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+        ## respectively but may change in the future.
+        maxIdleConns: 0 # Actually 2, since 0 is default
+        maxOpenConns: 10
+        ## If enabled, when accounts are fully rebuilt, they are done in batches instead
+        ## of all at once. When segmentation is enabled, the time for a full rebuild scales
+        ## with the amount of users, and the memory usage remains the same. When segmentation
+        ## is disabled, the time for a full rebuild scales better, but memory usage grows
+        ## with the amount of accounts.
+        accountSegmentation:
+          enabled: true
+          size: 50_000
+        ## The amount of time before getting a db connection is considered a failure.
+        ## This setting also applies to the lmdbManager sidecar container.
+        pgConnTimeout: 10s
+        ## The amount of rows to get at once for domain/account queries.
+        ## Higher values speed up the sync process at the cost of using more memory.
+        ## This setting also applies to the lmdbManager sidecar container.
+        ## Note that building an account requires looking at many tables, many of which
+        ## have multiple rows per account. The account setting here applies to all tables.
+        domainPgIterSize: 50_000
+        accountPgIterSize: 50_000
+        ## The max amount of domains to live-update at once.
+        domainLiveUpdateMaxBatchSize: 100
+        ## The max amount of time to wait for more domain live-updates to come in
+        ## before doing them all.
+        domainLiveUpdateMaxDelay: 10s
+        ## The max amount of category options to live-update at once.
+        categoryOptionLiveUpdateMaxBatchSize: 1
+        ## The max amount of time to wait for more category option live-updates to come in
+        ## before doing them all.
+        categoryOptionLiveUpdateMaxDelay: 1s
+        ## The max amount of categories to live-update at once.
+        categoryLiveUpdateMaxBatchSize: 1
+        ## The max amount of time to wait for more category live-updates to come in
+        ## before doing them all.
+        categoryLiveUpdateMaxDelay: 1s
+        ## The max amount of accounts to live-update at once.
+        accountLiveUpdateMaxBatchSize: 100
+        ## The max amount of time to wait for more account live-updates to come in
+        ## before doing them all.
+        accountLiveUpdateMaxDelay: 1s
+        ## The duration to plan ahead according to the account rules. This should be at least the
+        ## fullRebuildInterval plus the amount of time a full rebuild could reasonably take.
+        ## Higher values allow the DNS to return correct results for longer without a rebuild,
+        ## but takes more CPU at each full or partial rebuild.
+        ## This setting also applies to the lmdbManager sidecar container.
+        accountPlanAheadDuration: 168h
+        ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
+        ## but prevents live updates from working while a full domain rebuild is running.
+        streamDomains: true
+        ## The size of the memory-mapped database. On linux, this is not a disk-space or memory requirement
+        ## and should be set as large as possible, per http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5.
+        ## This setting also applies to the lmdbManager sidecar container.
+        mapSize: 1TB
         nameOverride:
         extraEnv: []
+        logLevel: info
         ## lmdb manager image for the initial run.
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.6
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2
+        ## Default resources is roughly the sum of all default container resources.
+        resources:
+          requests:
+            memory: 5Gi
+            cpu: 600m
+          limits:
+            memory: 5Gi
+            cpu: '2'
       ## Recommended: create iptables rules on the node to protect against DDOS attacks.
       ## This only protects plain DNS, not the encrypted DNS methods which are less vulnerable
-      ## to DDOS.
+      ## to DDOS. After this init container
+      ## runs on a node, the iptables rules it provisions remain until the node is restarted, even
+      ## if enabled is set to false.
       iptablesProvisioner:
         enabled: false
-        nameOverride:
         extraEnv: []
         ## Container image to run iptables commands
-        image: registry.gitlab.com/safesurfer/core/dns/iptables-provisioner:1.0.2
-        ## The name of the network interface opened to DNS packets
+        image: registry.gitlab.com/safesurfer/core/apps/iptables-provisioner:1.0.0
+        ## The name of the network interface opened to DNS packets. If you are using host networking,
+        ## you can check this by SSHing into the node and running "ip link show".
+        ## Otherwise, you can exec into the running pod to check this.
+        ## The iptables rules will be applied
+        ## to incoming packets to the dns port on this interface.
         ifcName: eth0
+        # Resources for iptables provisioner
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+      ## Recommended: create ip6tables rules on the node to protect against DDOS attacks.
+      ## Only enable this if you are using IPv6.
+      ## This only protects plain DNS, not the encrypted DNS methods which are less vulnerable
+      ## to DDOS. After this init container
+      ## runs on a node, the iptables rules it provisions remain until the node is restarted, even
+      ## if enabled is set to false.
+      ip6tablesProvisioner:
+        enabled: false
+        extraEnv: []
+        ## Container image to run iptables commands
+        image: registry.gitlab.com/safesurfer/core/apps/ip6tables-provisioner:1.0.0
+        ## The name of the network interface opened to IPv6 DNS packets. If you are using host networking,
+        ## you can check this by SSHing into the node and running "ip link show".
+        ## Otherwise, you can exec into the running pod to check this.
+        ## The iptables rules will be applied
+        ## to incoming packets to the dns port on this interface.
+        ifcName: eth0
+        # Resources for ip6tables provisioner
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+      ## If using IPv6 through a network load balancer with DSR (direct server return) it may
+      ## be necessary to rewrite UDP packets before they reach the DNS server. This is explained
+      ## (and based on) the GCP documentation (https://cloud.google.com/load-balancing/docs/network/udp-with-network-load-balancing)
+      ## but should work for other platforms too. Although the docs referenced above explain the
+      ## process for IPv4, the DNS actually works fine over IPv4 by default. It is only IPv6 that
+      ## has an issue, which this init container solves. This init
+      ## container modifies iptables rules on the host node so that incoming packets with the load
+      ## balancer's destination IP will be rewritten to have the destination IP of the node itself.
+      ## You must provide the IP address of the load balancer manually, so take care to update it
+      ## if it changes. The container finds the external IPv6 address of the node automatically
+      ## by looking up the ifcName you provide. Multiple load balancer or node ipv6 addresses
+      ## are not supported. Because this modifies node-level iptables rules, you should validate
+      ## the configuration alongside any other workloads you are running. After this init container
+      ## runs on a node, the iptables rules it provisions remain until the node is restarted, even
+      ## if enabled is set to false.
+      udpOverIpv6AddressRewrite:
+        enabled: false
+        ## Container image to run iptables commands
+        image: registry.gitlab.com/safesurfer/core/apps/udp-over-ipv6-address-rewrite:1.0.0
+        ## The name of the network interface opened to IPv6 DNS packets. If you are using host networking,
+        ## you can check this by SSHing into the node and running "ip link show".
+        ## Otherwise, you can exec into the running pod to check this.
+        ## The iptables rules will be applied
+        ## to incoming packets to the dns port on this interface.
+        ifcName: eth0
+        ## The IP of the load balancer. Required.
+        loadBalancerIp: 
+        # Resources for udpOverIpv6AddressRewrite
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+
     ## Default affinity: don't schedule more than one DNS pod on the same node.
     affinity:
       podAntiAffinity:
@@ -419,8 +604,14 @@ dns:
         cert:
         key:
       secretName:
+    ## Configure the kubernetes health check.
+    healthCheck:
+      ## If true, ignore whether the certificate is valid when checking the deployment health.
+      ## Useful if deployed behind a load balancer that handles SSL and does not check the
+      ## validity of the backend cert.
+      ignoreCert: false
     ## Custom DOH forwarder image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.0
     ## How much to log
     logLevel: info
     ## Extra environment variables for the DOH container.
@@ -473,14 +664,28 @@ dns:
       ## load balancing, and DNSCrypt must run with the same IP as plain DNS (and UDP
       ## load balancing isn't available.)
       isGCPNEG: false
+    ## Configure external access to DOH over IPv6.
+    ipv6Service:
+      enabled: false
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      port: 443
+      externalIPs: []
+      ## If specified, claim a particular load balancer IP
+      loadBalancerIP:
+      ## Any extra annotations to add to the service
+      annotations:
     ## Whether to not act as a DNS proxy, but instead return an empty reply. This allows
     ## DNS servers to re-sync the cert without having to host the full DNS.
     serveCertOnly: false
     ## The amount of times to retry querying the main DNS pods if a query fails.
     retries: 3
     ## The amount of TCP connections to multiplex over when querying the main DNS
-    ## pods.
-    tcpConns: 10
+    ## pods. It is only necessary to increase this when using DOH as a separate deployment
+    ## with an autoscaling setup where the amount of connections becomes a bottleneck.
+    ## If increased, the timeouts below should be reduced.
+    ## Setting it too high can sometimes result in timeouts/retries.
+    tcpConns: 1
     tcpTimeout: 1m
     tcpReuseTimeout: 1m
     ## Specify a deployment affinity, e.g. one DOH pod per node.
@@ -529,8 +734,14 @@ dns:
         cert:
         key:
       secretName:
+    ## Configure the kubernetes health check.
+    healthCheck:
+      ## If true, ignore whether the certificate is valid when checking the deployment health.
+      ## Useful if deployed behind a load balancer that handles SSL and does not check the
+      ## validity of the backend cert.
+      ignoreCert: false
     ## Container image for DOT forwarder.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.0.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.0
     ## How much to log
     logLevel: info
     ## Extra env for the DOT container.
@@ -578,6 +789,16 @@ dns:
       loadBalancerIP:
       ## Any extra annotations to add to the service
       annotations:
+    ## Configure external access to DOT over IPv6.
+    ipv6Service:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      port: 853
+      externalIPs: []
+      ## If specified, claim a particular load balancer IP
+      loadBalancerIP:
+      ## Any extra annotations to add to the service
+      annotations:
     ## Whether to not act as a DNS proxy, but instead return an empty reply. This allows
     ## DNS servers to re-sync the cert without having to host the full DNS.
     serveCertOnly: false
@@ -593,8 +814,11 @@ dns:
     ## The amount of times to retry querying the main DNS pods if a query fails.
     retries: 3
     ## The amount of TCP connections to multiplex over when querying the main DNS
-    ## pods.
-    tcpConns: 10
+    ## pods. It is only necessary to increase this when using DOT as a separate deployment
+    ## with an autoscaling setup where the amount of connections becomes a bottleneck.
+    ## If increased, the timeouts below should be reduced.
+    ## Setting it too high can sometimes result in timeouts/retries.
+    tcpConns: 1
     tcpTimeout: 1m
     tcpReuseTimeout: 1m
     ## Deployment affinity, e.g. don't schedule pods on the same nodes.
@@ -770,7 +994,7 @@ dns:
       ## Amount of pods to deploy. Overridden by the HPA if present.
       replicas: 2
       ## Image to use.
-      image: registry.gitlab.com/safesurfer/core/apps/clickhoused:1.0.1
+      image: registry.gitlab.com/safesurfer/core/apps/clickhoused:1.1.0
       ## If set to debug or lower, all messages from the DNS are logged.
       logLevel: info
       ## Horizontal pod autoscaler
@@ -794,7 +1018,8 @@ dns:
           cpu: "150m"
       ## The frontend collects logs from the DNS, or other clickhoused instances.
       frontend:
-        ## The UDP frontend collects logs directly from the DNS.
+        ## The UDP frontend collects logs directly from the DNS. The DNS will connect to this when hosted within the same
+        ## cluster.
         udp:
           enabled: true
           ## Create a load balancer instead of a cluster IP service. This should be combined with
@@ -822,8 +1047,8 @@ dns:
           ## Port to bind on the service
           svcPort: 9001
         ## The HTTP frontend create a secure ingress to collect logs from other clickhoused instances.
-        ## Disable udp frontend to enable this.
         http:
+          enabled: false
           ## A secret, which must match that of `dns.clickhoused.internal.backend.http.secret` in any other clickhoused instances
           ## forwarding to this one.
           ## Specify on CLI.
@@ -836,7 +1061,6 @@ dns:
           host:
           ## If specified, only the comma-separated CIDR IP ranges will be allowed
           ## to access this ingress.
-          ## Note that http01 tls method will likely not work when this is enabled.
           whitelistSourceRange:
           ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
           ## instance.
@@ -901,7 +1125,12 @@ dns:
       ## Amount of pods to deploy. Overridden by the HPA if present.
       replicas: 2
       ## Image to use.
-      image: registry.gitlab.com/safesurfer/core/apps/ipsetd:1.0.1
+      image: registry.gitlab.com/safesurfer/core/apps/ipsetd:1.1.0
+      ## The max amount of open/idle connections to use when connecting to the database.
+      ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+      ## respectively but may change in the future.
+      maxIdleConns: 0
+      maxOpenConns: 0
       ## Horizontal pod autoscaler
       hpa:
         enabled: false
@@ -966,7 +1195,6 @@ dns:
             host:
             ## If specified, only the comma-separated CIDR IP ranges will be allowed
             ## to access this ingress.
-            ## Note that http01 tls method will likely not work when this is enabled.
             whitelistSourceRange:
             ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
             ## instance.
@@ -1020,12 +1248,18 @@ api:
   ## How many instances of the API to deploy. Overridden by the autoscaler if present.
   replicas: 2
   ## The image to use for the API.
-  image: registry.gitlab.com/safesurfer/core/apps/api:10.30.1
+  image: registry.gitlab.com/safesurfer/core/apps/api:10.31.0
   ## The port to run on.
   port: 8080
   ## The port to run the admin API on. The only need to change this is if it clashes
   ## with the port above.
   adminPort: 8081
+  ## The API implements client-side connection pooling.
+  ## The max amount of open/idle connections to use when connecting to the database.
+  ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+  ## respectively but may change in the future.
+  maxIdleConns: 0
+  maxOpenConns: 0
   ## The admin secret, which if provided, allows performing actions on behalf of users.
   ## By default, this function is only accessible from within the cluster, but you can
   ## (carefully) expose it using the `adminIngress`.
@@ -1050,7 +1284,7 @@ api:
   ## - Forcing an email OTP when a new location is detected, see .api.accounts.forceEmailOtpOnUnknownIpField
   ipInfoProvider:
   ## Configure IP linking, allowing users to link their account or devices to their current external IP.
-  ## Disabled by default, but can IP linking API endpoints can still be used using admin auth.
+  ## Disabled by default, but IP linking API endpoints can still be used using admin auth.
   ipLinking:
     enabled: false
   ## Configure how the API handles cross-origin requests.
@@ -1065,7 +1299,7 @@ api:
   ## (it will 403 if the user doesn't have an active subscription).
   ## You can also change the timeout of requests (default is 1 minute).
   ## You can find the ID of each route in the API documentation:
-  ## https://safesurfer.gitlab.io/core/api-docs
+  ## https://safesurfer.gitlab.io/api-docs/
   ## A commented out example follows:
   routesConfig:
     # "24":
@@ -1077,7 +1311,7 @@ api:
   ## If a JWT token has roles, it will only be able to access the routes that are assigned to the role.
   ## The roles below represent a good configuration for the current versions of apps/CPEs.
   ## As before, you can find the ID of each route in the API documentation:
-  ## https://docs.api.safesurfer.io
+  ## https://safesurfer.gitlab.io/api-docs/
   rolesConfig:
     android:
       routes:
@@ -1089,6 +1323,12 @@ api:
       - 61 # Add cast
       - 120 # Add evasion attempt
       - 130 # Add notification
+      - 227 # app live updates
+      - 220 # Add apps
+      - 221 # Delete app
+      - 222 # Put apps
+      - 223 # Get and enable self service token
+      - 228 # Set timer running status
     router:
       routes:
       - 11 # Refresh JWT
@@ -1104,7 +1344,11 @@ api:
       - 166 # live updates
       - 167 # Set version
       - 169 # Delete client
-      - 122 # Get self service token
+      - 122 # Get self service token if enabled
+      - 223 # Get and enable self service token
+    windows:
+      routes:
+      - 223 # Get and enable self service token
   ## Configure the default resource quotas for each user. You can override these on an individual basis through
   ## the admin app, or for particular plans or addons.
   quotas:
@@ -1172,6 +1416,10 @@ api:
     ## Default of 0 effectively turns off this feature.
     web_push_subscriptions:
       maxValue: 0
+    ## The max amount of app IDs you can add to each device. Setting this to 0 effectively turns
+    ## off the app ID tracking feature, which is the default.
+    apps_per_device:
+      maxValue: 0
 
   ## Configure the ingress, allowing HTTP traffic to reach the API from the internet.
   ## The "host" field here is templated in other places, such as the frontend. Therefore
@@ -1186,7 +1434,29 @@ api:
     class: nginx
     ## If specified, only the comma-separated CIDR IP ranges will be allowed
     ## to access this ingress.
-    ## Note that http01 tls method will likely not work when this is enabled.
+    whitelistSourceRange:
+    ## Configure TLS for the API
+    tls:
+      http01: true
+      custom:
+        enabled: false
+        cert:
+        key:
+      secretName:
+
+  ## Configure the IPv6-only ingress, allowing HTTP traffic to reach the API from the internet.
+  ## The "host" field here is templated in other places, such as the frontend. Therefore
+  ## the TLS setup here should be a general one usable by browsers. If an alternate TLS setup
+  ## or domain are desired, check the "extraIngress" field below.
+  ingressIpv6:
+    enabled: false
+    ## The hostname for the API on the internet.
+    host:
+    ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+    ## instance.
+    class: nginx-ipv6
+    ## If specified, only the comma-separated CIDR IP ranges will be allowed
+    ## to access this ingress.
     whitelistSourceRange:
     ## Configure TLS for the API
     tls:
@@ -1209,7 +1479,6 @@ api:
     host:
     ## If specified, only the comma-separated CIDR IP ranges will be allowed
     ## to access this ingress.
-    ## Note that http01 tls method will likely not work when this is enabled.
     whitelistSourceRange:
     ## Configure TLS for the admin API
     tls:
@@ -1336,6 +1605,15 @@ api:
       ## Names of keys that can be overwritten by users. Note that they will be editable even if not
       ## defined above.
       editableKeys: []
+    ## Rate-limit the amount of signon attempts per user account per minute. Note that there are other
+    ## protections against password cracking in the API as well - the per-source IP rate limit defined in
+    ## .api.rateLimiting, and the email OTP signin challenge when signing in from a new location.
+    ## If the email OTP challenge is enabled, this rate limit only has an effect if an attacker
+    ## manages to spam the API from the known source IP of a user.
+    ## Users can optionally enable 2fa as well.
+    signonRateLimit:
+      ## If there are more than this many signin attempts per minute for a given user, reply with 429.
+      max: 10
     ## If the user signs in from a different-looking IP address, sign in using an email OTP
     ## rather than a password. To set this up, you must also set up sendgrid and an ipinfo
     ## provider.
@@ -1351,24 +1629,14 @@ api:
     emailOtpValidityDuration: 10m
     ## If an email OTP is required, how many tries the user has for a given OTP.
     emailOtpMaxTries: 5
-    ## Rate-limit the amount of signon attempts per user account per minute. Note that there are other
-    ## protections against password cracking in the API as well - the per-source IP rate limit defined in
-    ## .api.rateLimiting, and the email OTP signin challenge when signing in from a new location.
-    ## If the email OTP challenge is enabled, this rate limit only has an effect if an attacker
-    ## manages to spam the API from the known source IP of a user.
-    ## Users can optionally enable 2fa as well.
-    signonRateLimit:
-      ## The base duration for signin rate limiting. After a signin attempt, the API will delay
-      ## the result of the request for an amount defined by startDuration^numAttempts, where numAttempts
-      ## is the number of failed attempts for a given user per minute. If the result of the calculation
-      ## is greater than endDuration, endDuration applies.
-      ## You can set startDuration to 0s to disable the delay and just use the max parameter.
-      ## The default here is disabled.
-      ## Both are parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
-      startDuration: 0s
-      endDuration: 4s
-      ## If there are more than this many signin attempts per minute for a given user, reply with 429.
-      max: 10
+    ## Rate-limit the amount of email OTP sends per user account per minute. Takes the same format as 
+    ## signonRateLimit above.
+    emailOtpRateLimit:
+      max: 2
+    ## Rate-limit the amount of password reset requests sends per user account per minute. Takes the same format as 
+    ## signonRateLimit above.
+    passwordResetRateLimit:
+      max: 2
     ## The API supports authenticating with routers running our router integration
     ## without transmitting account details over the local network.
     ## This parameter configures how long the client has to grant the remote auth request. Once granted, the router has this
@@ -1392,7 +1660,7 @@ api:
     ## Configure how 2FA works.
     twofactor:
       ## The amount of time the user has to provide a valid TOTP token or recovery code after providing their username/password.
-      signinTime: 2m
+      signinTime: 10m
       ## The amount of time the user has to provide a valid TOTP token when setting up 2FA initially. If this expires, the setup is
       ## aborted.
       registrationTime: 10m
@@ -1402,6 +1670,21 @@ api:
       ## The name of the account that will show up in the authenticator app, e.g. on Google Authenticator. The user's email
       ## is also displayed alongside this.
       issuerName: ''
+      ## Configure the number of attempts the user has to enter a valid 2FA code before submission is locked for
+      ## a period of time. When submission is locked, a 2FA recovery code can still be used to sign in, but not
+      ## a 2FA OTP code. The rateLimit parameter below further restricts this, and also applies when
+      ## submissions are locked.
+      attempts:
+        ## The maximum amount of submissions before submissions are locked for the next time period.
+        maxPerPeriod: 5
+        ## The minimum lockout duration in minutes. The duration of a lockout period is this number
+        ## to the power of the amount of lockout periods so far minus one. E.g. with the default
+        ## settings, the first lockout period is 60 seconds, then an hour, then 2.5 days, etc.
+        lockPeriodStartSecs: 60
+        ## The maximum lockout duration.
+        lockPeriodEndSecs: 31536000 # 1 year
+      ## The max amount of 2FA submissions per user per minute.
+      rateLimit: 10
     ## Configure how the QR code auth system works. This allows a user to transfer auth to a device by encoding
     ## a redeemable token inside a QR code and scanning it with the device.
     qrAuth:
@@ -1614,18 +1897,28 @@ api:
   ## Alerts configuration. Alerts enable sending periodic emails with account activity
   ## such as blocked sites. Alerts are also viewable from the frontend.
   alerts:
-    ## Tuning parameter: increasing this will increase system load, but reduce the likelyhood
-    ## that a requests for alerts will timeout. There is only a need to change it if issues are
-    ## oberserved with either high system load or alerts timeouts.
-    lookaheadMultiplier: 20
+    ## Tuning parameter: the lookahead is the amount of extra data queried from each
+    ## data source in case the alerts retreived are summarized into the previous alert.
+    ## For each extra pass needed, the start multiplier increases by the factor defined below
+    ## until it reaches the end multiplier. This means that it rises exponentially for each attempt.
+    ## There is only a need to change it if issues are
+    ## observed with either high system load or alerts timeouts.
+    lookaheadMultiplierStart: 2
+    lookaheadMultiplierEnd: 20
+    lookaheadMultiplierFactor: 2
     ## Configure the mailbot, which sends the automated emails
     mailbot:
       enabled: false
+      ## The max amount of open/idle connections to use when connecting to the database.
+      ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+      ## respectively but may change in the future.
+      maxIdleConns: 0
+      maxOpenConns: 0
       ## Specify a custom name, otherwise it's based on the name of the release
       nameOverride:
       ## If set to debug or lower, the sent emails and arguments are also logged to the console.
       logLevel: info
-      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.4.1
+      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.5.0
       ## Resources: if requests are specified the task may fail to schedule and emails are missed.
       ## the used resources are small and not taken up for very long.
       resources:
@@ -1690,7 +1983,12 @@ api:
   dailyCleanup:
     enabled: true
     ## Image to use
-    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.0.1
+    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.1.0
+    ## The max amount of open/idle connections to use when connecting to the database.
+    ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+    ## respectively but may change in the future.
+    maxIdleConns: 0
+    maxOpenConns: 0
     ## Logging level, currently doesn't log anything below info
     logLevel: info
     ## Configure timeouts
@@ -1912,7 +2210,7 @@ api:
     #         - text: ')'
     #       request_alert_display:
     #       - field: device
-    #       - text: ' requested '
+    #       - text: ' was blocked from '
     #       - field: category
     #       - text: ' '
     #       - field: domain-group
@@ -1922,11 +2220,11 @@ api:
     #         - text: ')'
     #       request_alert_summary_display:
     #       - field: device
-    #       - text: ' requested '
+    #       - text: ' was blocked from '
     #       - field: category
     #       - text: ' '
     #       - field: count
-    #       - text: ' times.'
+    #       - text: ' times. '
     #       - field: domain-group
     #         members:
     #         - text: '('
@@ -1993,6 +2291,7 @@ api:
     #       - field: notification
     #         truncateTo: 30
     #         appendIfTruncated: '...'
+    #       - text: ' '
     #       - field: count
     #       - text: ' times.'
     #       no_activity_alert_display:
@@ -2028,7 +2327,6 @@ categorizer:
       class: nginx
       ## If specified, only the comma-separated CIDR IP ranges will be allowed
       ## to access this ingress.
-      ## Note that http01 tls method will likely not work when this is enabled.
       whitelistSourceRange:
       ## Configure TLS for the categorizer
       tls:
@@ -2042,7 +2340,12 @@ categorizer:
     ## The amount of categorizer instances. Overridden by the HPA if created.
     replicas: 1
     ## The image to use for the categorizer
-    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.21.2
+    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.22.1
+    ## The max amount of open/idle connections to use when connecting to the database.
+    ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+    ## respectively but may change in the future.
+    maxIdleConns: 0
+    maxOpenConns: 0
     ## The port to run on.
     port: 8080
     ## The HTTP header to look at to find the user's real IP. If blank, will use the IP of the connection directly
@@ -2164,8 +2467,10 @@ categorizer:
     enabled: false
     ## Specify a custom name, otherwise it's based on the name of the release
     nameOverride:
-    ## Cron spec: when to mirror domains
-    schedule: 0 0 * * 5
+    ## Cron spec: when to mirror domains. The default here runs every minute for almost real-time
+    ## updates. Although the initial sync can take a long time, new syncs will not be started while
+    ## an existing sync is running.
+    schedule: '* * * * *'
     ## The timeout for the entire job. Note that the first sync, or the first sync after
     ## changing the mapping setup may take quite a while. Successive syncs are fast.
     ## Parsed as a go duration, https://golang.org/pkg/time/#ParseDuration
@@ -2173,16 +2478,38 @@ categorizer:
     ## How many history items to request at a time. Higher values are more efficient, but it
     ## must be low enough that http requests to the remote categorizer don't time out.
     batchSize: 250
+    ## When fetching missing domain history from remote categorizers, how many domains to request
+    ## at a time.
+    ## Only relevant if syncing from multiple upstreams.
+    filteredBatchSize: 100
     ## The timeout for adding/updating each batch on the local side.
     batchTimeout: 10m
     ## How many domains to update at a time internally.
     internalBatchSize: 1000
     ## The duration before HTTP requests to the remote categorizer time-out.
     externalHTTPTimeout: 10m
+    ## The duration before HTTP requests to remote categorizers for missing domain history time-out.
+    ## Only relevant if syncing from multiple upstreams.
+    externalFilteredHttpTimeout: 10m
     ## The minimum amount of time to wait between requests to the remote categorizer.
     externalHttpMinWait: 2s
+    ## When performing a partial update from multiple categorizers, each categorizer will
+    ## be requested for the latest domain state for any domains added from another categorizer.
+    ## This keeps the results consistent. However, at a certain amount of domains, it
+    ## becomes more efficient to just perform a full sync. This parameter is that limit.
+    ## Only relevant if syncing from multiple upstreams.
+    missingHistoryLimit: 1_000_000
+    ## When getting missing history, the amount of missing domains to request history for
+    ## at a time. The limitation here is the size of the HTTP body that the upstream
+    ## categorizer can accept.
+    missingHistoryDomainBatchSize: 1_000
     ## The image to use for running the domain mirroring job
-    image: registry.gitlab.com/safesurfer/core/apps/domain-mirror-sync:1.0.0
+    image: registry.gitlab.com/safesurfer/core/apps/domain-mirror-sync:1.1.0
+    ## The max amount of open/idle connections to use when connecting to the database.
+    ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+    ## respectively but may change in the future.
+    maxIdleConns: 0
+    maxOpenConns: 0
     ## Log level
     logLevel: info
     ## The username prefix that will show in history entries when mirroring makes changes
@@ -2215,7 +2542,12 @@ categorizer:
     ## https://golang.org/pkg/time/#ParseDuration
     internalHTTPTimeout: 10s
     ## The image to use for running the ip mirroring job
-    image: registry.gitlab.com/safesurfer/core/apps/ip-mirror-sync:1.0.0
+    image: registry.gitlab.com/safesurfer/core/apps/ip-mirror-sync:1.1.0
+    ## The max amount of open/idle connections to use when connecting to the database.
+    ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+    ## respectively but may change in the future.
+    maxIdleConns: 0
+    maxOpenConns: 0
     ## Login details the mirroring job uses to communicate with the categorizer. Unlike domains, IPs
     ## don't have a history yet so this doesn't show up anywhere.
     login:
@@ -2336,7 +2668,7 @@ categorizer:
       jobs:
         ## Specify a custom name, otherwise it's based on the name of the release
         nameOverride:
-        image: registry.gitlab.com/safesurfer/core/apps/crawler:5.18.0
+        image: registry.gitlab.com/safesurfer/core/apps/crawler:5.18.1
         ## The resources for each crawler instance. This contains a chrome process, so think big!
         resources:
           requests:
@@ -2461,7 +2793,7 @@ db:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## The current schema version. The argument is an image that runs migrations against the database.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.4.0
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.5.0
   ## Configure an external database connection, see above.
   external:
     ## Whether to use an external database. Either this or the in-cluster database must be enabled.
@@ -2607,7 +2939,6 @@ monitoring:
     host:
     ## If specified, only the comma-separated CIDR IP ranges will be allowed
     ## to access this ingress.
-    ## Note that http01 tls method will likely not work when this is enabled.
     whitelistSourceRange:
     ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
     ## instance.
@@ -2620,6 +2951,142 @@ monitoring:
         cert:
         key:
       secretName:
+
+## The health checks pod periodically checks health of DNS or HTTP endpoints.
+## Each endpoint is defined using a target, which can define a series of health checks.
+## If any of the health checks fail, the target is considered unhealthy. The status of each
+## target can be queried using HTTP, which can be used to create a status page like
+## https://status.safesurfer.io.
+## Each target also emits prometheus metrics, which can be used together with prometheus
+## alert manager to alert a member of the team if error rate is elevated.
+healthChecks:
+  ## Whether to enable the health check pod. Each deployment in the chart already has its
+  ## own health checks that kubernetes uses to determine when to restart pods or mark them
+  ## unavailable, but this deployment can be used to check external use for alerting or
+  ## reporting purposes.
+  enabled: false
+  image: registry.gitlab.com/safesurfer/core/apps/status:1.1.0
+  ## How much to log. Info messages are logged when a health check is run or on startup.
+  ## Warnings are logged when a health check fails. Panics are logged for unexpected errors.
+  ## If you set health checks to run every second with "* * * * * *", the info level
+  ## may be too granular for you.
+  logLevel: info
+  ## The resources to allocate to the pod. It is pretty lightweight.
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "25m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+  ## Finally, which health checks to actually do. The format, as well as possible options, is
+  ## commented below.
+  spec:
+    # targets:
+    # # An HTTP health check queries an endpoint with a timeout. The check fails if the response code is
+    # # outside the 2xx range or takes too long.
+    # - name: http-example # Query results over HTTP by specifying as the "target" query parameter
+    #   interval: '*/2 * * * *' # Every 2 minutes
+    #   healthChecks:
+    #   - type: HTTP
+    #     spec:
+    #       url: https://safesurfer.io/for-isp
+    #       method: GET
+    #       timeout: 5s
+    # - name: plain-dns-example
+    #   interval: '*/5 * * * * *' # Every 5 seconds
+    #   healthChecks:
+    #   - type: DNS
+    #     spec:
+    #       address: '0.0.0.0' # DNS resolver to query
+    #       port: 53 # 53 is default
+    #       proto: udp # udp is default
+    #       domain: internetbadguys.com # domain to look up
+    #       expectedIPs: # If specified, assert that certain IPs must be returned.
+    #       - '0.0.0.0'
+    #       timeout: 2s
+    #   - type: DNS
+    #     spec:
+    #       address: '[0::0]' # IPv6 must be in square brackets
+    #       proto: tcp
+    #       domain: google.com
+    #       timeout: 5s
+    # - name: dnscrypt-example
+    #   interval: '* * * * * *' # Every second
+    #   healthChecks:
+    #   - type: DNSCrypt
+    #     spec:
+    #       # The DNS stamp to query, see https://dnscrypt.info/stamps/
+    #       stamp: sdns://AQEAAAAAAAAADjEwNC4xOTcuMjguMTIxICcgf9USBOg2e0g0AF35_9HTC74qnDNjnm7b-K7ZHUDYIDIuZG5zY3J5cHQtY2VydC5zYWZlc3VyZmVyLmNvLm56
+    #       proto: udp # or tcp
+    #       queryType: A # or CNAME
+    #       domain: internetbadguys.com
+    #       expectedIPs: # If specified, assert that certain IPs must be returned.
+    #       - '0.0.0.0'
+    #       timeout: 2s
+    # - name: doh-example
+    #   interval: '* * * * * *' # Every second
+    #   healthChecks:
+    #   - type: DOH
+    #     spec:
+    #       host: doh.safesurfer.io # DOH host to query
+    #       bootstrapAddr: '35.227.226.142' # If specified, do not look up the IP of the resolver over public DNS. Use this IP as the IP of the resolver.
+    #       queryType: A # or CNAME
+    #       domain: internetbadguys.com # Domain to look up
+    #       expectedIPs: # If specified, assert that certain IPs must be returned.
+    #       - '0.0.0.0'
+    #       timeout: 2s
+    # - name: dot-example
+    #   interval: '* * * * * *' # Every second
+    #   healthChecks:
+    #   - type: DOT
+    #     spec:
+    #       host: doh.safesurfer.io # DOT host to query
+    #       bootstrapAddr: '0.0.0.0' # If specified, do not look up the IP of the resolver over public DNS. Use this IP as the IP of the resolver.
+    #       domain: internetbadguys.com # Domain to look up
+    #       expectedIPs: # If specified, assert that certain IPs must be returned.
+    #       - '0.0.0.0'
+    #       timeout: 2s
+
+  ## Query the health checks over HTTP, if enabled. The status pod responds to the /healthy
+  ## path, and the name of the target to query is specified by the "target" query parameter.
+  http:
+    enabled: false
+    ## If immediateMode is true, the interval of each health check target is ignored.
+    ## Instead, the health of the target is evaluated when queried via http.
+    ## Prometheus metrics are no longer emitted.
+    immediateMode: false
+    ## If HTTP secret is set, it must be specified via the "secret" query parameter when checking
+    ## target health via HTTP.
+    httpSecret:
+    ## If true, querying any path other than /healthy will check all targets and return healthy
+    ## if all targets are healthy. 
+    fallbackRoute: false
+    ## Configure the ingress, exposing the health checks externally. This will be public unless
+    ## the ingress.whitelistSourceRange or httpSecret fields are configured.
+    ingress:
+      enabled: false
+      ## The hostname for the health checks on the internet.
+      host:
+      ## Rate limit requests
+      rateLimiting:
+        enabled: false
+        ## Requests per minute
+        rpm:
+      ## If specified, only the comma-separated CIDR IP ranges will be allowed
+      ## to access this ingress.
+      whitelistSourceRange:
+      ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+      ## instance.
+      class: nginx
+      ## Configure TLS for the health checks
+      tls:
+        http01: true
+        custom:
+          enabled: false
+          cert:
+          key:
+        secretName:
 
 ## Since this chart is intended to be used in many environments, we specify how to provide for
 ## the needs of the deployments here, including:
@@ -2816,7 +3283,12 @@ alphasoc:
     ## See also .alphasoc.internal.alertsRetentionDuration
     schedule: 30 * * * *
     ## The image to use for alert sync
-    image: registry.gitlab.com/safesurfer/core/apps/alphasync:1.0.2
+    image: registry.gitlab.com/safesurfer/core/apps/alphasync:1.1.0
+    ## The max amount of open/idle connections to use when connecting to the database.
+    ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+    ## respectively but may change in the future.
+    maxIdleConns: 0
+    maxOpenConns: 0
     ## Configure various timeouts, parsed as a go duration, see https://golang.org/pkg/time/#ParseDuration.
     timeouts:
       ## The max amount of time for the entire cronjob.
@@ -2844,7 +3316,7 @@ clickhouse:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## A container to bring up the schema of the instance. This is effectively the schema version of the clickhouse instance.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/clickhouse-config:1.0.0
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/clickhouse-config:1.0.1
   ## External hosting
   external:
     enabled: false
@@ -2898,7 +3370,7 @@ frontend:
   ## The amount of replicas to deploy. Overridden by the hpa if enabled.
   replicas: 2
   ## The container image to use.
-  image: registry.gitlab.com/safesurfer/dashboard:1.3.1
+  image: registry.gitlab.com/safesurfer/dashboard:1.4.0
   ## Image pull secret to use, if the image is private.
   imagePullSecret:
     # registry:
@@ -2933,6 +3405,8 @@ frontend:
 
   ## If specified, use this base API URL instead of the value of `api.ingress.host`.
   apiHostOverride:
+  ## If specified, use this base API URL for IPv6-only instead of the value of `api.ingressIpv6.host`.
+  apiIpv6HostOverride:
   ## If specified, use this base admin app URL instead of the value of `categorizer.adminApp.ingress.host`.
   ## Admin app connection is optional for the dashboard, only used to anonymously query domains like the
   ## block page.
@@ -2945,7 +3419,6 @@ frontend:
     host:
     ## If specified, only the comma-separated CIDR IP ranges will be allowed
     ## to access this ingress.
-    ## Note that http01 tls method will likely not work when this is enabled.
     whitelistSourceRange:
     ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
     ## instance.
@@ -2987,6 +3460,11 @@ frontend:
 blockpage:
   ## Whether to enable the blockpage
   enabled: false
+  ## Whether the blockpage should be enabled for *users* by default. If false, users will get NXDOMAIN as
+  ## a response when a domain is blocked rather than the domain of the block page.
+  ## This settings affects both the API (if enabled), and the DNS (if enabled). Therefore, if you have
+  ## multiple DNS clusters, this setting needs to be updated in each.
+  enabledForUsersByDefault: true
   ## The domain of the blockpage. This may be specified without enabling the block page in this cluster to
   ## host the block page somewhere else. If hosted in this cluster, must be pointed at the right IP after deployment.
   domain:
@@ -3004,6 +3482,12 @@ blockpage:
     # username:
     # password:
     # email:
+  ## Annotations to add to the service. The default creates an external network load balancer on AWS EKS
+  ## and is ignored by the other k8s platforms, which do this by default.
+  svcAnnotations:
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-type: external
   ## Resources to allocate.
   resources:
     requests:

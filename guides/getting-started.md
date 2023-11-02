@@ -193,6 +193,7 @@ from `http://localhost:8085` in your browser.
 #### Troubleshooting
 - Ensure port 8085 is free on your local machine. If not, choose a different port.
 - If you have overridden `categorizer.adminApp.svcPort`, substitute that for `8080`.
+- Port-forwarding won't work when `authIpWhitelist` is enabled.
 
 ## Using the admin app
 The admin app can be used to manage domains, categories, restrictions, IP addresses, users, and anonymized usage data. You can use the GUI, or you can automate tasks using the [admin API](https://safesurfer.gitlab.io/admin-app-api-docs/). In this guide, we will use the GUI to:
@@ -273,24 +274,25 @@ dns:
     initContainers:
       iptablesProvisioner:
         enabled: true
+      initLmdb:
+        # Tone resources down for testing
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
     sidecarContainers:
       lmdbManager:
         # Tone resources down for testing
         resources:
-          domains:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
-          accounts:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"  
       healthCheck:
         bindPort: 53531
         httpSecret:
@@ -308,7 +310,7 @@ After running `kubectl get pods` you should now see something like this:
 
 ```
 NAME                                        READY   STATUS        RESTARTS      AGE
-safesurfer-dns-57b77b9978-nff8p             4/4     Running       0             26s
+safesurfer-dns-57b77b9978-nff8p             3/3     Running       0             26s
 ```
 
 If you were quick enough, you may have seen the `dns` pod `Initializing`. This process should have been quick because our database
@@ -345,23 +347,13 @@ dns:
 The DNS can run on any linux OS supporting systemd and docker. It only requires a database connection to the postgres database used by the rest of deployment. Internet access through the DNS does not depend on the postgres database being up - this only affects whether users or admins can change settings. The `ss-config` tool can template configuration files or a [cloud-init](https://cloud-init.io/) file to install Safe Surfer DNS on any operating system. It takes input in the same `values.yaml` format as the helm chart, but does not support all the parameters, for example autoscaling must be handled differently for server deployments.
 
 > **Warning**
-> `ss-config` assumes a fresh system - it makes several changes to your system configuration as necessary, such as disabling `systemd-resolved`, enabling other services, and overwriting docker config.
+> The configuration produced by `ss-config` assumes a fresh system - it makes several changes to the system configuration as necessary, such as disabling `systemd-resolved`, enabling other services, and overwriting docker config.
 
-`ss-config` is distributed as a simple binary - you can download it for your system from the following links:
-| System architecture      | Link |
-| ----------- | ----------- |
-| Windows amd64      | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.windows-amd64.exe)       |
-| Windows arm64   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.windows-arm64.exe)        |
-| Windows 386   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.windows-386.exe)        |
-| Linux arm64   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.linux-arm64)        |
-| Linux amd64   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.linux-amd64)        |
-| Linux 386   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.linux-386)        |
-| Darwin (Mac) amd64   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.darwin-amd64)        |
-| Darwin (Mac) arm64   | [link](https://files.safesurfer.io/files/dev/ss-config.1.0.0.darwin-arm64)        |
+`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/1.1.2/).
 
 Rename the binary to `ss-config`, ensure it has execute permissions, and move it to your path. Alternatively you can use it directly from the download location.
 
-Grab a copy of the default values for `ss-config` from [ss-config/values.yaml](../ss-config/values.yaml) in this repo, and name it `server-values.yaml` in your working directory. Note that `ss-config` doesn't *quite* work like `helm` - your `server-values.yaml` isn't overriding the defaults, but rather it *is* the values, which is why we're copying the whole file.
+To see all values supported by ss-config, run `ss-config values`. For this example, we'll assume you're working in a file named `server-values.yaml` in the current directory. The contents of `server-values.yaml` override the defaults shown by running `ss-config values`.
 
 To start with, copy your existing image pull secret:
 ```yaml
@@ -416,9 +408,16 @@ dns:
           enabled: true
           secret: generate-a-strong-secret
         useFallbackRoute: true
+blockpage:
+  # We'll deploy the block page later
+  domain: ''
+protocolchecker:
+  # We'll deploy the protocol checker later
+  domains:
+    base: 'active.check.ss.example.com'
 ```
 
-Now we can use the `ss-config` tool to generate the installation files. Just run `ss-config -f server-values.yaml`, which if successful shouldn't print anything to the console. There should now be a `vm-config` folder in your working directory. Inside the `vm-config` should be two items:
+Now we can use the `ss-config` tool to generate the installation files. Just run `ss-config template -f server-values.yaml`, which if successful shouldn't print anything to the console. There should now be a `vm-config` folder in your working directory. Inside the `vm-config` should be two items:
 - A `cloud-init.yaml` file, which will automatically create the desired files when provided to any VM creation process that supports cloud-init.
 - An `etc` folder, which can be copied to the root directory of the server manually.
 
@@ -445,11 +444,10 @@ The script should guide you through the installation process from here. As menti
 Regardless of the option you choose, after booting (or rebooting) a DNS server, you can check its status by running `sudo docker ps`. You should see a result like the following:
 
 ```
-CONTAINER ID   IMAGE                                                          COMMAND                  CREATED          STATUS          PORTS     NAMES
-cb8d23f93746   registry.gitlab.com/safesurfer/core/apps/dns:1.15.4            "/app/run-server.sh"     35 seconds ago   Up 34 seconds             ss-dns
-f2b303b922ac   registry.gitlab.com/safesurfer/core/apps/status:1.0.0          "/app/status-exec"       35 seconds ago   Up 35 seconds             ss-status
-ebbd627e0a89   registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.5   "python3 /app/dump-a…"   36 seconds ago   Up 34 seconds             ss-lmdb-manager-accounts
-afab8731cd59   registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.15.5   "python3 /app/dump-d…"   36 seconds ago   Up 34 seconds             ss-lmdb-manager-domains
+CONTAINER ID   IMAGE                                                          COMMAND                  CREATED         STATUS                  PORTS     NAMES
+beb13c45b9de   registry.gitlab.com/safesurfer/core/apps/status:1.1.0          "/app/status-exec"       1 second ago    Up Less than a second             ss-status
+dfd035fb952f   registry.gitlab.com/safesurfer/core/apps/dns:1.16.0            "/app/run-server.sh"     6 seconds ago   Up 5 seconds                      ss-dns
+43a6b21886ab   registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2   "/app/lmdb-manager-e…"   7 seconds ago   Up 5 seconds                      ss-lmdb-manager
 ```
 
 If you were quick enough, you might have seen the init container running instead. This process should have been quick because our database is small, but it can take a few minutes once your database is loaded with domains and/or users. During the init phase, the DNS loads its own local database, meaning your DNS speed and/or uptime isn't tied to your postgres database. It will live-update after this. The postgres database can even go down completely without impacting internet access. However, users or admins will not be able to change settings while there is database downtime.
@@ -549,6 +547,6 @@ Changes you make in the admin app will instantly sync to the DNS. You can play a
 You've successfully created a filtering DNS server that uses static lists added through the admin app.
 
 Try one of the next guides:
-- [Monitoring](./monitoring.md)
+- [Monitoring & Alerting](./monitoring-and-alerting.md)
 - [Block Page](./block-page.md)
 - [Per-user and per-device filtering](./per-user-and-device-filtering.md)

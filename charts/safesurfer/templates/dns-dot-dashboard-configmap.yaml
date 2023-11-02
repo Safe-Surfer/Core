@@ -124,7 +124,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
@@ -134,7 +134,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
@@ -144,7 +144,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -237,7 +237,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
@@ -247,7 +247,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
@@ -257,7 +257,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -354,7 +354,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -368,7 +368,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "90th Percentile",
               "range": true,
@@ -380,7 +380,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99th Percentile",
               "range": true,
@@ -392,7 +392,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.9th Percentile",
               "range": true,
@@ -404,7 +404,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_tls_frontend_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_tls_frontend_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.99th Percentile",
               "range": true,
@@ -502,7 +502,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -516,7 +516,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "90th Percentile",
               "range": true,
@@ -528,7 +528,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99th Percentile",
               "range": true,
@@ -540,7 +540,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.9th Percentile",
               "range": true,
@@ -552,7 +552,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dotContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.99th Percentile",
               "range": true,
@@ -592,7 +592,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} |~ \"(level=error|level=panic|level=fatal)\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"} |~ \"(level=error|level=panic|level=fatal)\"",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -630,7 +630,7 @@ data:
                 "type": "loki",
                 "uid": "P8E80F9AEF21F6940"
               },
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dotContainerAndAppName" . }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -664,7 +664,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}",
-      "uid": "1zz1LDEMk",
+      "uid": null,
       "version": 1,
       "weekStart": ""
     }

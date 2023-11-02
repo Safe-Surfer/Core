@@ -14,32 +14,38 @@ data:
         "list": [
           {
             "builtIn": 1,
-            "datasource": "-- Grafana --",
+            "datasource": {
+              "type": "datasource",
+              "uid": "grafana"
+            },
             "enable": true,
             "hide": true,
             "iconColor": "rgba(0, 211, 255, 1)",
             "name": "Annotations & Alerts",
+            "target": {
+              "limit": 100,
+              "matchAny": false,
+              "tags": [],
+              "type": "dashboard"
+            },
             "type": "dashboard"
           }
         ]
       },
       "editable": true,
-      "gnetId": null,
+      "fiscalYearStartMonth": 0,
       "graphTooltip": 0,
-      "id": 28,
       "links": [],
+      "liveNow": false,
       "panels": [
         {
           "aliasColors": {},
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "Prometheus",
-          "fieldConfig": {
-            "defaults": {
-              "custom": {}
-            },
-            "overrides": []
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
           },
           "fill": 1,
           "fillGradient": 0,
@@ -63,8 +69,11 @@ data:
           "lines": true,
           "linewidth": 1,
           "nullPointMode": "null",
+          "options": {
+            "alertThreshold": true
+          },
           "percentage": false,
-          "pluginVersion": "7.1.1",
+          "pluginVersion": "9.4.7",
           "pointradius": 2,
           "points": false,
           "renderer": "flot",
@@ -74,28 +83,40 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"}[5m]) * 100",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
+              "range": true,
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"} * 100)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"} * 100)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
             }
           ],
           "thresholds": [],
-          "timeFrom": null,
           "timeRegions": [],
-          "timeShift": null,
           "title": "CPU %",
           "tooltip": {
             "shared": true,
@@ -104,33 +125,24 @@ data:
           },
           "type": "graph",
           "xaxis": {
-            "buckets": null,
             "mode": "time",
-            "name": null,
             "show": true,
             "values": []
           },
           "yaxes": [
             {
               "format": "short",
-              "label": null,
               "logBase": 1,
-              "max": null,
-              "min": null,
               "show": true
             },
             {
               "format": "short",
-              "label": null,
               "logBase": 1,
-              "max": null,
-              "min": null,
               "show": true
             }
           ],
           "yaxis": {
-            "align": false,
-            "alignLevel": null
+            "align": false
           }
         },
         {
@@ -138,12 +150,9 @@ data:
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "Prometheus",
-          "fieldConfig": {
-            "defaults": {
-              "custom": {}
-            },
-            "overrides": []
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
           },
           "fill": 1,
           "fillGradient": 0,
@@ -167,8 +176,11 @@ data:
           "lines": true,
           "linewidth": 1,
           "nullPointMode": "null",
+          "options": {
+            "alertThreshold": true
+          },
           "percentage": false,
-          "pluginVersion": "7.1.1",
+          "pluginVersion": "9.4.7",
           "pointradius": 2,
           "points": false,
           "renderer": "flot",
@@ -178,28 +190,40 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
+              "range": true,
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
             }
           ],
           "thresholds": [],
-          "timeFrom": null,
           "timeRegions": [],
-          "timeShift": null,
           "title": "Memory Bytes",
           "tooltip": {
             "shared": true,
@@ -208,42 +232,30 @@ data:
           },
           "type": "graph",
           "xaxis": {
-            "buckets": null,
             "mode": "time",
-            "name": null,
             "show": true,
             "values": []
           },
           "yaxes": [
             {
               "format": "short",
-              "label": null,
               "logBase": 1,
-              "max": null,
-              "min": null,
               "show": true
             },
             {
               "format": "short",
-              "label": null,
               "logBase": 1,
-              "max": null,
-              "min": null,
               "show": true
             }
           ],
           "yaxis": {
-            "align": false,
-            "alignLevel": null
+            "align": false
           }
         },
         {
-          "datasource": "Loki",
-          "fieldConfig": {
-            "defaults": {
-              "custom": {}
-            },
-            "overrides": []
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
           },
           "gridPos": {
             "h": 9,
@@ -253,6 +265,10 @@ data:
           },
           "id": 6,
           "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
             "showLabels": false,
             "showTime": false,
             "sortOrder": "Descending",
@@ -261,18 +277,24 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}\"}",
+              "datasource": {
+                "type": "loki",
+                "uid": "P8E80F9AEF21F6940"
+              },
+              "editorMode": "code",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.clickhouse.namespace) }}\", container=\"clickhouse\"}",
               "legendFormat": "",
+              "queryType": "range",
               "refId": "A"
             }
           ],
-          "timeFrom": null,
-          "timeShift": null,
           "title": "Logs",
           "type": "logs"
         }
       ],
-      "schemaVersion": 26,
+      "refresh": "",
+      "revision": 1,
+      "schemaVersion": 38,
       "style": "dark",
       "tags": [],
       "templating": {
@@ -297,8 +319,9 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "clickhouse" "nameOverride" .Values.clickhouse.nameOverride) }}",
-      "uid": "K254oawGk",
-      "version": 1
+      "uid": null,
+      "version": 1,
+      "weekStart": ""
     }
 {{- end }}
 {{- end }}

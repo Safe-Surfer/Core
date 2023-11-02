@@ -74,19 +74,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -178,19 +178,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -261,7 +261,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -295,7 +295,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} |= \"\\\"level\\\":\\\"error\\\"\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} |= \"\\\"level\\\":\\\"error\\\"\"",
               "legendFormat": "",
               "refId": "A"
             }
@@ -329,7 +329,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} |= \"\\\"level\\\":\\\"warning\\\"\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}\"} |= \"\\\"level\\\":\\\"warning\\\"\"",
               "legendFormat": "",
               "refId": "A"
             }
@@ -384,19 +384,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -488,19 +488,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -571,7 +571,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -605,7 +605,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} |= \"level=error\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync\"} |= \"level=error\"",
               "legendFormat": "",
               "refId": "A"
             }

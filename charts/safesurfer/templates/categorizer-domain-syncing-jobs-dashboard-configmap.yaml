@@ -75,19 +75,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -179,19 +179,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -262,7 +262,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\",namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\"}",
+              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "ip-mirror-sync" "nameOverride" .Values.categorizer.ipMirroring.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -317,19 +317,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -421,19 +421,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -504,7 +504,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -559,19 +559,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -663,19 +663,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "{{ `{{ pod }}` }}",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -746,7 +746,7 @@ data:
           "pluginVersion": "7.1.1",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "domain-mirror-sync" "nameOverride" .Values.categorizer.mirroring.nameOverride) }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -782,7 +782,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "domain-syncing-jobs") }}",
-      "uid": "7P_HlSEGz",
+      "uid": null,
       "version": 1
     }
 {{- end }}

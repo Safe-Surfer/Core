@@ -14,7 +14,7 @@ metadata:
   name: {{ include "name" (dict "Release" .Release "name" "external-domain-sync" "nameOverride" .Values.categorizer.externalDomainSync.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
 spec:
-  schedule: {{ .Values.categorizer.externalDomainSync.schedule }}
+  schedule: {{ .Values.categorizer.externalDomainSync.schedule | quote }}
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -39,7 +39,7 @@ spec:
             - name: APP_BATCH_TIMEOUT
               value: {{ .Values.categorizer.externalDomainSync.timeouts.perBatch }}
             - name: APP_BATCH_SIZE
-              value: {{ .Values.categorizer.externalDomainSync.batchSize | quote }}
+              value: {{ .Values.categorizer.externalDomainSync.batchSize | int | quote }}
             - name: APP_CATEGORIZER_HOST
               value: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}.svc.cluster.local:{{ .Values.categorizer.adminApp.svcPort }}
             - name: APP_CATEGORIZER_USERNAME

@@ -62,6 +62,13 @@ spec:
         - name: APP_API_URL
           value: https://{{ .Values.api.ingress.host }}
         {{- end }}
+        {{- if .Values.frontend.apiIpv6HostOverride }}
+        - name: APP_API_IPV6_URL
+          value: {{ .Values.frontend.apiIpv6HostOverride }}
+        {{- else }}
+        - name: APP_API_IPV6_URL
+          value: https://{{ .Values.api.ingressIpv6.host }}
+        {{- end }}
         {{- if .Values.frontend.adminAppHostOverride }}
         - name: APP_CATEGORIZER_URL
           value: {{ .Values.frontend.adminAppHostOverride }}
@@ -131,11 +138,34 @@ spec:
 # Create the HPA if desired.
 #
 {{ if .Values.frontend.hpa.enabled }}
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+spec:
+  maxReplicas: {{ .Values.frontend.hpa.maxReplicas }}
+  minReplicas: {{ .Values.frontend.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.frontend.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.frontend.hpa.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}
@@ -156,6 +186,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.frontend.hpa.targetAverageCPUUtilization }}
+{{- end }}
 {{ end }}
 ---
 #

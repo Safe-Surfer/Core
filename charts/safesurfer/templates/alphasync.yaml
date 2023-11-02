@@ -24,7 +24,7 @@ metadata:
   name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-sync
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.alphasoc.namespace) }}
 spec:
-  schedule: {{ .Values.alphasoc.sync.schedule }}
+  schedule: {{ .Values.alphasoc.sync.schedule | quote }}
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -60,6 +60,10 @@ spec:
                   name: {{ include "name" (dict "Release" .Release "name" "alphasoc" "nameOverride" .Values.alphasoc.nameOverride) }}-key
                   key: key
             {{ include "dbEnvs" . | indent 12 }}
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.alphasoc.sync.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.alphasoc.sync.maxOpenConns | int | quote }}
             {{ include "clickhouseEnvs" . | indent 12 }}
             {{ include "loggingEnvs" (dict "level" .Values.alphasoc.sync.logLevel) | indent 12 }}
           restartPolicy: Never

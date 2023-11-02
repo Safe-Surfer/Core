@@ -77,21 +77,21 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "queryType": "randomWalk",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} * 100)",
               "hide": false,
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} * 100)",
               "hide": false,
               "interval": "",
               "legendFormat": "CPU Limit",
@@ -187,21 +187,21 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "queryType": "randomWalk",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "Memory Limit",
@@ -273,7 +273,7 @@ data:
           "pluginVersion": "7.4.2",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
               "queryType": "randomWalk",
               "refId": "A"
             }
@@ -305,7 +305,7 @@ data:
           "pluginVersion": "7.4.2",
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} |= \"level=error\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"} |= \"level=error\"",
               "queryType": "randomWalk",
               "refId": "A"
             }
@@ -361,7 +361,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_running{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_running{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Running Classifications",
               "queryType": "randomWalk",
@@ -457,7 +457,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "crewmate_ss_categorizer_categorizer_classification_jobs_queued{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
+              "expr": "crewmate_ss_categorizer_categorizer_classification_jobs_queued{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": "Queued",
               "queryType": "randomWalk",
@@ -553,7 +553,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_errors{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_errors{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Errors",
               "queryType": "randomWalk",
@@ -649,7 +649,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_timeouts{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_timeouts{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Timeouts",
               "queryType": "randomWalk",
@@ -745,7 +745,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_avg_queued_time{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_avg_queued_time{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Average Queued Time",
               "queryType": "randomWalk",
@@ -841,7 +841,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_avg_runtime{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
+              "expr": "max(crewmate_ss_categorizer_categorizer_classification_jobs_avg_runtime{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "classifier" "nameOverride" .Values.categorizer.autoCat.classifier.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Average Classification Runtime",
               "queryType": "randomWalk",

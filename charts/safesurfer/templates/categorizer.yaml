@@ -150,6 +150,10 @@ spec:
           # DB Connection
           #
           {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_PG_MAX_IDLE_CONNS
+            value: {{ .Values.categorizer.adminApp.maxIdleConns | int | quote }}
+          - name: APP_PG_MAX_OPEN_CONNS
+            value: {{ .Values.categorizer.adminApp.maxOpenConns | int | quote }}
           {{- if or .Values.clickhouse.internal.enabled .Values.clickhouse.external.enabled }}
           {{ include "clickhouseEnvs" . | indent 10 }}
           {{- end }}
@@ -174,7 +178,7 @@ spec:
             value: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
 
           - name: APP_DOMAIN_HISTORY_MAX_PER_REQUEST
-            value: {{ .Values.categorizer.adminApp.maxHistoryEntriesPerRequest | quote }}
+            value: {{ .Values.categorizer.adminApp.maxHistoryEntriesPerRequest | int64 | quote }}
 
           - name: APP_CLICKHOUSE_READ_TIMEOUT
             value: {{ .Values.categorizer.adminApp.clickhouse.readTimeout | quote }}
@@ -190,20 +194,20 @@ spec:
 
           # How much to blur images when proxying
           - name: IMAGE_BLUR
-            value: {{ .Values.categorizer.adminApp.imageProxy.imageBlur | quote }}
+            value: {{ .Values.categorizer.adminApp.imageProxy.imageBlur | int | quote }}
           # JPEG quality for proxied images
           - name: IMAGE_QUALITY
-            value: {{ .Values.categorizer.adminApp.imageProxy.imageQuality | quote }}
+            value: {{ .Values.categorizer.adminApp.imageProxy.imageQuality | int | quote }}
 
           # Public endpoint rate limits
           - name: RATE_LIMIT_GET_DOMAIN_CATEGORIES
-            value: {{ .Values.categorizer.adminApp.rateLimiting.publicGetDomain | quote }}
+            value: {{ .Values.categorizer.adminApp.rateLimiting.publicGetDomain | int | quote }}
 
           # Whether to enable auto-categorization
           - name: ENABLE_AUTOCATEGORIZATION
             value: {{ .Values.categorizer.autoCat.enabled | ternary "true" "false" | quote }}
           - name: APP_CRAWLER_MAX_QUEUED
-            value: {{ .Values.categorizer.autoCat.maxQueued | quote }}
+            value: {{ .Values.categorizer.autoCat.maxQueued | int | quote }}
           - name: APP_MODEL_TRAINING_INIT_TIMEOUT
             value: {{ .Values.categorizer.autoCat.training.initTimeout }}
           - name: APP_MODEL_TRAINING_TRAIN_TIMEOUT
@@ -211,7 +215,7 @@ spec:
           - name: APP_CRAWLER_HOOK_TIMEOUT
             value: {{ .Values.categorizer.autoCat.training.iterationTimeout }}
           - name: APP_CLASSIFICATIONS_MAX_QUEUED
-            value: {{ .Values.categorizer.autoCat.classifications.maxQueued | quote }}
+            value: {{ .Values.categorizer.autoCat.classifications.maxQueued | int | quote }}
           - name: APP_CLASSIFICATIONS_HOOK_TIMEOUT
             value: {{ .Values.categorizer.autoCat.classifications.addTimeout }}
 
@@ -317,11 +321,34 @@ spec:
 #
 # Horizontal pod autoscaler.
 #
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}
+spec:
+  maxReplicas: {{ .Values.categorizer.adminApp.hpa.maxReplicas }}
+  minReplicas: {{ .Values.categorizer.adminApp.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.categorizer.adminApp.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.categorizer.adminApp.hpa.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "admin-app" "nameOverride" .Values.categorizer.adminApp.nameOverride) }}
@@ -342,6 +369,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.categorizer.adminApp.hpa.targetAverageCPUUtilization }}
+{{- end }}
 {{ end }}
 ---
 #

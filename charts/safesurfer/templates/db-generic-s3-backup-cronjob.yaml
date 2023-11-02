@@ -12,7 +12,7 @@ metadata:
   name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
 spec:
-  schedule: {{ .Values.db.backups.genericS3.schedule }}
+  schedule: {{ .Values.db.backups.genericS3.schedule | quote }}
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:

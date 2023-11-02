@@ -26,7 +26,7 @@ Here's everything you can achieve using Safe Surfer Core:
 - [Checking Protection](./guides/checking-protection.md)
 - [Billing and Quotas](./guides/billing-and-quotas.md)
 - [DOH and DOT](./guides/doh-and-dot.md)
-- [Monitoring](./guides/monitoring.md)
+- [Monitoring & Alerting](./guides/monitoring-and-alerting.md)
 - [Auto Categorization](./guides/auto-categorization.md)
 - [AlphaSOC Integration](./guides/alphasoc.md)
 - [Building a Dashboard](./guides/building-a-dashboard.md)
@@ -49,7 +49,7 @@ To contribute to our open source projects, see our [gitlab account](https://gitl
 Contact us at [info@safesurfer.io](mailto:info@safesurfer.io) for a license key. Pricing is free for a demo, or POA for enterprise usage.
 
 ## Release Schedule
-This is the initial release. We plan to make new releases bi-annually. Detailed changelogs will be posted.
+New releases are made bi-annually. See [changelog](./CHANGELOG.md) for the release history.
 
 ## Other resources
 - [API docs](https://safesurfer.gitlab.io/api-docs/)

@@ -25,6 +25,10 @@ spec:
             env:
             # Include DB connection
             {{ include "dbEnvs" . | indent 12 }}
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.api.dailyCleanup.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.api.dailyCleanup.maxOpenConns | int | quote }}
             {{ include "loggingEnvs" (dict "level" .Values.api.dailyCleanup.logLevel) | indent 12 }}
             - name: APP_TIMEOUT
               value: {{ .Values.api.dailyCleanup.timeouts.main }}

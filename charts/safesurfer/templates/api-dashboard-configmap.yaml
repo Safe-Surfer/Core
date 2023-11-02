@@ -78,19 +78,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": " {{ `{{ pod }}` }} ",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "refId": "C"
@@ -187,19 +187,19 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"}",
               "interval": "",
               "legendFormat": " {{ `{{ pod }}` }} ",
               "refId": "A"
             },
             {
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "refId": "B"
             },
             {
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "refId": "C"
@@ -271,7 +271,7 @@ data:
           },
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} |= \"error\" != \"during auth\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\"} |= \"error\" != \"during auth\"",
               "refId": "A"
             }
           ],
@@ -331,7 +331,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(ssapi_request_count{total=\"count\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])",
+              "expr": "rate(ssapi_request_count{total=\"count\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -339,7 +339,7 @@ data:
               "refId": "A"
             },
             {
-              "expr": "sum(rate(ssapi_request_count{total=\"count\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(rate(ssapi_request_count{total=\"count\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "Total",
               "refId": "B"
@@ -439,7 +439,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(sum_over_time(ssapi_latency_50th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_50th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(ssapi_latency_50th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_50th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -447,25 +447,25 @@ data:
               "refId": "A"
             },
             {
-              "expr": "sum(sum_over_time(ssapi_latency_90th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_90th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(ssapi_latency_90th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_90th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "90th Percentile",
               "refId": "B"
             },
             {
-              "expr": "sum(sum_over_time(ssapi_latency_99th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_99th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(ssapi_latency_99th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_99th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99th Percentile",
               "refId": "C"
             },
             {
-              "expr": "sum(sum_over_time(ssapi_latency_999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(ssapi_latency_999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.9th Percentile",
               "refId": "D"
             },
             {
-              "expr": "sum(sum_over_time(ssapi_latency_9999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_9999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(ssapi_latency_9999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m])) / sum(count_over_time(ssapi_latency_9999th{endpoint=\"$LATENCY_ENDPOINT\",app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.99th Percentile",
               "refId": "E"
@@ -559,7 +559,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(ssapi_live_updates_ws_count{app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"})",
+              "expr": "sum(ssapi_live_updates_ws_count{app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"})",
               "interval": "",
               "legendFormat": "Total",
               "refId": "A"
@@ -631,7 +631,7 @@ data:
           },
           "targets": [
             {
-              "expr": "{app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\",namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}",
+              "expr": "{app=\"{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\"}",
               "refId": "A"
             }
           ],
@@ -688,7 +688,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}",
-      "uid": "m8DOlyqZzl",
+      "uid": null,
       "version": 2
     }
 {{- end }}

@@ -59,13 +59,15 @@
     - name: APP_TLS_WRITE_TIMEOUT
       value: {{ .Values.dns.dot.writeTimeout }}
     - name: APP_MAX_TCP_CONNS
-      value: {{ .Values.dns.dot.tcpConns | quote }}
+      value: {{ .Values.dns.dot.tcpConns | int | quote }}
     - name: APP_MAX_ATTEMPTS
-      value: {{ .Values.dns.dot.retries | quote }}
+      value: {{ .Values.dns.dot.retries | int | quote }}
     - name: APP_FRONTEND
       value: dot
     - name: APP_HEALTH_CHECK_HOSTNAME
       value: {{ .Values.dns.dns.healthCheck.testDomain }}
+    - name: APP_HEALTH_CHECK_IGNORE_CERT
+      value: {{ .Values.dns.dot.healthCheck.ignoreCert | quote }}
     - name: APP_TCP_TIMEOUT
       value: {{ .Values.dns.dot.tcpTimeout }}
     - name: APP_TCP_REUSE_TIMEOUT
@@ -92,9 +94,9 @@
       port: 8080
       {{- end }}
   livenessProbe:
-    failureThreshold: 1
+    failureThreshold: 2
     initialDelaySeconds: 1
-    periodSeconds: 20
+    periodSeconds: 5
     successThreshold: 1
     timeoutSeconds: 5
     httpGet:

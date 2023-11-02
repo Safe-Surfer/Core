@@ -69,6 +69,7 @@ data:
       complete-twofactor:
         routes:
         - 162 # Submit 2fa token
+        - 229 # 2fa token submission attempts
       approval-required:
         routes:
         - 214 # Remove restriction

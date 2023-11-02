@@ -1,7 +1,7 @@
 #
 # Create a cronjob to take backups to GCS if enabled.
 #
-{{ if and .Values.db.inCluster.enabled .Values.db.backups.gcs.enabled }}
+{{ if .Values.db.backups.gcs.enabled }}
 {{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version }}
 apiVersion: batch/v1
 {{- else }}
@@ -12,7 +12,7 @@ metadata:
   name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.db.namespace) }}
 spec:
-  schedule: {{ .Values.db.backups.gcs.schedule }}
+  schedule: {{ .Values.db.backups.gcs.schedule | quote }}
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -23,7 +23,7 @@ spec:
           - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-gitlab-registry
           containers:
             - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-backup
-              image: registry.gitlab.com/safesurfer/core/postgres/gcs-backup:0.0.1
+              image: registry.gitlab.com/safesurfer/core/apps/gcs-backup:1.0.0-dev001
               command:
               - bash
               args:

@@ -109,7 +109,7 @@ spec:
         - name: APP_SERVICE_PORT
           value: {{ .Values.categorizer.autoCat.crawlerWorker.svcPort | quote }}
         - name: APP_MAX_JOBS
-          value: {{ .Values.categorizer.autoCat.crawlerWorker.maxConcurrentJobs | quote }}
+          value: {{ .Values.categorizer.autoCat.crawlerWorker.maxConcurrentJobs | int | quote }}
         {{- if .Values.categorizer.autoCat.crawlerWorker.jobs.translation.enabled }}
         {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
         - name: CRAWLER_TRANSLATION_SECRET_NAME

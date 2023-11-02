@@ -14,6 +14,9 @@ metadata:
 data:
   timezone: {{ .Values.dns.timezone }}
   recursor.conf: |-
+    # Which addresses queries will be sent from.
+    query-local-address={{ required "queryLocalAddress required" .Values.dns.dns.queryLocalAddress }}
+
     #################################
     # allow-from	If set, only allow these comma separated netmasks to recurse
     #
@@ -70,7 +73,7 @@ data:
     # local-address	IP addresses to listen on, separated by spaces or commas. Also accepts ports.
     #
     # local-address=127.0.0.1
-    local-address=0.0.0.0
+    local-address={{ .Values.dns.dns.localAddress }}
 
     #################################
     # local-port	port to listen on

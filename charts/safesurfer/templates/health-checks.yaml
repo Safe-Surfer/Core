@@ -1,0 +1,184 @@
+{{- if .Values.healthChecks.enabled }}
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+---
+#
+# The namespace.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.healthChecks.namespace }}
+{{- end }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-gitlab-registry
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+{{- if and .Values.healthChecks.http.enabled .Values.healthChecks.http.httpSecret }}
+#
+# HTTP secret, if any.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-http-secret
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+type: Opaque
+data:
+  secret: {{ .Values.healthChecks.http.httpSecret | b64enc | quote }}
+{{- end }}
+---
+#
+# The deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        #
+        # Ensure rolling deployments when mounted secrets change.
+        #
+        checksum/config: {{ include (print $.Template.BasePath "/health-checks-configmap.yaml") . | sha256sum }}
+        {{- if and .Values.healthChecks.http.enabled .Values.healthChecks.http.httpSecret }}
+        checksum/http-secret: {{ .Values.healthChecks.http.httpSecret | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-gitlab-registry
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-status-config
+      automountServiceAccountToken: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+        image: {{ .Values.healthChecks.image }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+        {{ include "loggingEnvs" (dict "level" .Values.healthChecks.logLevel) | indent 8 }}
+        - name: APP_ENABLE_METRICS
+          value: 'true'
+        - name: APP_ENABLE_SHUTDOWN_ROUTE
+          value: 'false'
+        {{- if .Values.healthChecks.http.enabled }}
+        - name: APP_PORT
+          value: '8080'
+        - name: APP_MODE_IMMEDIATE
+          value: {{ .Values.healthChecks.http.immediateMode | quote }}
+        - name: APP_ENABLE_FALLBACK_ROUTE
+          value: {{ .Values.healthChecks.http.fallbackRoute | quote }}
+        {{- if .Values.healthChecks.http.httpSecret }}
+        - name: APP_HTTP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-http-secret
+              key: secret
+        {{- end }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          subPath: status.yaml
+          mountPath: /app/status.yaml
+        {{- if .Values.healthChecks.http.enabled }}
+        ports:
+        - containerPort: 8080
+        {{- end }}
+        resources:
+          {{- toYaml .Values.healthChecks.resources | nindent 10 }}
+---
+#
+# Create the service
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+---
+{{- if .Values.healthChecks.http.enabled }}
+{{- if .Values.healthChecks.http.ingress.enabled }}
+#
+# Ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    {{ if .Values.healthChecks.http.ingress.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.healthChecks.http.ingress.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.healthChecks.http.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.healthChecks.http.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.healthChecks.http.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Values.healthChecks.http.ingress.host }}
+    {{- if .Values.healthChecks.http.ingress.tls.secretName }}
+    secretName: {{ .Values.healthChecks.http.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.healthChecks.http.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
+            port:
+              number: 80
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Values.healthChecks.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride)) "namespace" .Values.healthChecks.namespace "dnsNames" (list .Values.healthChecks.http.ingress.host) "Values" .Values) }}
+{{- end }}
+{{- end }}
+{{- end }}

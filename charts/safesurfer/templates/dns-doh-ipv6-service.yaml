@@ -1,0 +1,51 @@
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.doh.enabled }}
+{{- if .Values.dns.doh.deployment }}
+{{- if .Values.dns.doh.ipv6Service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "doh-ipv6" "nameOverride" .Values.dns.doh.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- with .Values.dns.doh.ipv6Service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  ipFamilyPolicy: SingleStack
+  ipFamilies:
+  - IPv6
+  ports:
+  - name: "tcp-dns-doh"
+    port: {{ .Values.dns.doh.ipv6Service.port }}
+    protocol: TCP
+    targetPort: {{ .Values.dns.doh.bindPort }}
+  type: {{ .Values.dns.doh.ipv6Service.type }}
+  {{- if (or (eq .Values.dns.doh.ipv6Service.type "LoadBalancer") (eq .Values.dns.doh.ipv6Service.type "NodePort")) }}
+  externalTrafficPolicy: Local
+  {{- if .Values.dns.doh.ipv6Service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.dns.doh.ipv6Service.loadBalancerIP }}
+  {{- end }}
+  sessionAffinity: ClientIP
+  {{- end }}
+  externalIPs:
+{{- if .Values.dns.doh.ipv6Service.externalIPs }}
+{{- with .Values.dns.doh.ipv6Service.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
+    app: {{ include "dohContainerAndAppName" . }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

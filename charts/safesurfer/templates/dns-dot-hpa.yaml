@@ -2,11 +2,41 @@
 {{- if .Values.dns.dot.enabled }}
 {{- if .Values.dns.dot.deployment }}
 {{- if .Values.dns.dot.horizonalPodAutoscaler.enabled }}
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minReplicas: {{ .Values.dns.dot.horizonalPodAutoscaler.minReplicas }}
+  maxReplicas: {{ .Values.dns.dot.horizonalPodAutoscaler.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.dns.dot.horizonalPodAutoscaler.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.dns.dot.horizonalPodAutoscaler.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}
@@ -34,6 +64,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.dns.dot.horizonalPodAutoscaler.targetAverageCPUUtilization }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

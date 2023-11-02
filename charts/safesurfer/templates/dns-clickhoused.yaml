@@ -23,7 +23,7 @@ data:
 {{- end }}
 
 # HTTP ingress secret (for frontend) if needed.
-{{- if not .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+{{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
 ---
 apiVersion: v1
 kind: Secret
@@ -117,7 +117,8 @@ spec:
           {{- if .Values.dns.clickhoused.internal.frontend.udp.enabled }}
           containerPort: {{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
           protocol: UDP
-          {{- else }}
+          {{- end }}
+          {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
           containerPort: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
           protocol: TCP
           {{- end }}
@@ -131,22 +132,25 @@ spec:
           value: {{ .Values.dns.clickhoused.internal.backend.alphasoc.enabled | quote }}
         # UDP frontend specific
         {{- if .Values.dns.clickhoused.internal.frontend.udp.enabled }}
-        - name: APP_FRONTEND
-          value: udp
-        - name: APP_PORT
+        - name: APP_FRONTEND_UDP
+          value: '1'
+        - name: APP_UDP_PORT
           value: 0.0.0.0:{{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
         - name: APP_MAX_BATCH_SIZE
-          value: {{ .Values.dns.clickhoused.internal.frontend.udp.maxBatchSize | quote }}
+          value: {{ .Values.dns.clickhoused.internal.frontend.udp.maxBatchSize | int | quote }}
         - name: APP_MAX_BATCH_WAIT
           value: {{ .Values.dns.clickhoused.internal.frontend.udp.maxBatchWait }}
-        {{- else }}
+        {{- end }}
+        {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
         # HTTP frontend specific
+        - name: APP_FRONTEND_HTTP
+          value: '1'
         - name: APP_HTTP_SECRET
           valueFrom:
             secretKeyRef:
               name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-frontend
               key: secret
-        - name: APP_PORT
+        - name: APP_HTTP_PORT
           value: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort | quote }}
         {{- end }}
         {{- if .Values.dns.clickhoused.internal.backend.clickhouse.enabled}}
@@ -202,11 +206,41 @@ spec:
 # The HPA, if any
 {{- if .Values.dns.clickhoused.internal.hpa.enabled }}
 ---
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  minReplicas: {{ .Values.dns.clickhoused.internal.hpa.minReplicas }}
+  maxReplicas: {{ .Values.dns.clickhoused.internal.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.dns.clickhoused.internal.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.dns.clickhoused.internal.hpa.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
@@ -234,6 +268,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.dns.clickhoused.internal.hpa.targetAverageCPUUtilization }}
+{{- end }}
 {{- end }}
 
 # The PDB, if any
@@ -299,7 +334,8 @@ spec:
     targetPort: {{ .Values.dns.clickhoused.internal.frontend.udp.bindPort }}
     protocol: UDP
     name: udp
-  {{- else }}
+  {{- end }}
+  {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
   - port: {{ .Values.dns.clickhoused.internal.frontend.http.svcPort }}
     targetPort: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
     protocol: TCP
@@ -313,8 +349,8 @@ spec:
     app: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
     {{- end }}
 
-# Ingress/cert for clickhoused, if http is the frontend.
-{{- if not .Values.dns.clickhoused.internal.frontend.udp.enabled }}
+# Ingress/cert for clickhoused, if http frontend is enabled.
+{{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
 ---
 #
 # Issuer and cert.
@@ -327,7 +363,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "safesurfer-dns.fullname" . }}-clickhoused
+  name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -357,7 +393,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride)
+            name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
             port:
               number: {{ .Values.dns.clickhoused.internal.frontend.http.svcPort }}
 {{- end }}

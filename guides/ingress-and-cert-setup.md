@@ -5,7 +5,7 @@ A Kubernetes [ingress](https://kubernetes.io/docs/concepts/services-networking/i
 This chart supports the Nginx ingress controller natively. If you have an existing cluster with a different ingress controller, that's ok. You can run multiple by proceeding with the rest of this guide, or choose to create your own ingress resources.
 
 ## Creating Your Own Ingress Resources
-If you choose to do this, you must just reference the services created by this chart in your manifests. You also need to ensure that `api.realIPHeader` and `categorizer.adminApp.realIPHeader` are configured with a header they can use to find the source IP of the user. Failing to configure this correctly can be a security concern. Also note that the `rateLimiting` parameters found throughout the chart are implemented using the nginx ingress controller, so will not work when it's not being used.
+If you choose to do this, you must just reference the services created by this chart in your manifests. You also need to ensure that `api.realIPHeader` and `categorizer.adminApp.realIPHeader` are configured with a header they can use to find the source IP of the user. Failing to configure this correctly can be a security concern. Also note that any `rateLimiting` parameters are implemented using the nginx ingress controller, so will not work when it's not being used. Parameters not named `rateLimiting`, e.g. `api.accounts.signonRateLimit` are not based on nginx and will work regardless.
 
 ## Installing Nginx Ingress Controller
 Nginx ingress controller is also distributed as a helm chart. Let's create a values file for it named `nginx-values.yaml`. Fill it with the following content to begin with:
@@ -16,13 +16,17 @@ controller:
   service:
     enabled: true
     externalTrafficPolicy: Local
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
   # Autoscale from 1-10.
   autoscaling:
     enabled: true
     minReplicas: 1
     maxReplicas: 10
     targetCPUUtilizationPercentage: 80
-    targetMemoryUtilizationPercentage: 80
   # Enable prometheus metrics.
   metrics:
     enabled: true
@@ -35,6 +39,8 @@ controller:
   config:
     use-forward-headers: "true"
     compute-full-forward-for: "true"
+    # On AWS, use the following
+    # use-proxy-protocol: "true"
   # Don't allow scheduling on the same node
   affinity:
     podAntiAffinity:
@@ -48,7 +54,12 @@ controller:
           topologyKey: "kubernetes.io/hostname"
 ```
 
+Review the file and customize according to your needs - all configuration for nginx can be viewed on the ingress-nginx project [here](https://github.com/kubernetes/ingress-nginx/blob/main/charts/ingress-nginx/values.yaml).
+
 To install it, you can run the following commands:
+
+> **Note**
+> Newly created AWS EKS clusters may not have a load balancer controller installed. Follow the [instructions on AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html) to create one first. 
 
 ```sh
 helm repo add "ingress-nginx" "https://kubernetes.github.io/ingress-nginx"
@@ -76,7 +87,7 @@ Various parts of the Safe Surfer deployment may require you to enable TLS. There
 - Supply the name of a secret containing the `tls.crt` and `tls.key` files. You can use this to set up a letsencrypt cert using [DNS01 validation](https://cert-manager.io/docs/configuration/acme/dns01/) with cert-manager.
 
 ### Installing cert-manager
-The full instructions are [here](https://cert-manager.io/docs/installation/), but in most cases all you need is `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.11.0/cert-manager.yaml`.
+The full instructions are [here](https://cert-manager.io/docs/installation/), but in most cases all you need is `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml`.
 
 This command will install cert manager to the `cert-manager` namespace. Run `kubectl -n cert-manager get pods` until you see a result like the following:
 

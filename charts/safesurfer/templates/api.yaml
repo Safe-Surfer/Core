@@ -193,9 +193,6 @@ spec:
         checksum/ipinfo: {{ include "ipinfoProviderObject" (dict "Values" .Values "key" .Values.api.ipInfoProvider) | sha256sum }}
         {{- end }}
     spec:
-      #
-      # Use the global image pull secret.
-      #
       imagePullSecrets:
       - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
 
@@ -252,6 +249,10 @@ spec:
           # DB Connection
           #
           {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_PG_MAX_IDLE_CONNS
+            value: {{ .Values.api.maxIdleConns | int | quote }}
+          - name: APP_PG_MAX_OPEN_CONNS
+            value: {{ .Values.api.maxOpenConns | int | quote }}
           {{ include "emailEnvs" . | indent 10 }}
 
           # admin internal
@@ -267,8 +268,12 @@ spec:
             value: {{ .Values.i18n.defaultLanguage }}
           
           # alerts
-          - name: APP_ALERTS_LOOKAHEAD_MULTIPLIER
-            value: {{ .Values.api.alerts.lookaheadMultiplier | quote }}
+          - name: APP_ALERTS_LOOKAHEAD_MULTIPLIER_START
+            value: {{ .Values.api.alerts.lookaheadMultiplierStart | int | quote }}
+          - name: APP_ALERTS_LOOKAHEAD_MULTIPLIER_END
+            value: {{ .Values.api.alerts.lookaheadMultiplierEnd | int | quote }}
+          - name: APP_ALERTS_LOOKAHEAD_MULTIPLIER_FACTOR
+            value: {{ .Values.api.alerts.lookaheadMultiplierFactor | int | quote }}
 
           # Ipsets connection/params
           {{ include "redisEnvs" . | indent 10 }}
@@ -330,15 +335,15 @@ spec:
           - name: APP_TOTP_CONFIRMATION_TIME
             value: {{ .Values.api.accounts.twofactor.registrationTime }}
           - name: APP_QR_WIDTH
-            value: {{ .Values.api.accounts.twofactor.qrWidth | quote }}
+            value: {{ .Values.api.accounts.twofactor.qrWidth | int | quote }}
           - name: APP_QR_HEIGHT
-            value: {{ .Values.api.accounts.twofactor.qrHeight | quote }}
+            value: {{ .Values.api.accounts.twofactor.qrHeight | int | quote }}
           - name: APP_ROUTER_PLACEHOLDER_NAME
             value: {{ .Values.api.devices.routerPlaceholderName | quote }}
           - name: APP_ERASE_HISTORY_ON_DELETE
             value: {{ and .Values.api.accounts.clearHistoryOnDelete (or .Values.clickhouse.external.enabled .Values.clickhouse.internal.enabled) | quote }}
           - name: APP_QR_TOKEN_LENGTH
-            value: {{ .Values.api.accounts.qrAuth.tokenLength | quote }}
+            value: {{ .Values.api.accounts.qrAuth.tokenLength | int | quote }}
           - name: APP_QR_TOKEN_VALIDITY_DURATION
             value: {{ .Values.api.accounts.qrAuth.tokenValidityDuration }}
             
@@ -375,23 +380,31 @@ spec:
           - name: APP_EMAIL_OTP_VALIDITY_DURATION
             value: {{ .Values.api.accounts.emailOtpValidityDuration }}
           - name: APP_EMAIL_OTP_MAX_TRIES
-            value: {{ .Values.api.accounts.emailOtpMaxTries | quote }}
+            value: {{ .Values.api.accounts.emailOtpMaxTries | int | quote }}
           - name: APP_MANAGED_ACCOUNTS
             value: {{ .Values.api.accounts.managed | quote }}
           - name: APP_NEW_ACCOUNT_POLICY
             value: {{ .Values.api.accounts.newAccountPolicy | quote }}
-          - name: APP_SIGNON_RATE_LIMIT_START
-            value: {{ .Values.api.accounts.signonRateLimit.startDuration }}
-          - name: APP_SIGNON_RATE_LIMIT_END
-            value: {{ .Values.api.accounts.signonRateLimit.endDuration }}
           - name: APP_SIGNON_RATE_LIMIT_MAX
-            value: {{ .Values.api.accounts.signonRateLimit.max | quote }}
+            value: {{ .Values.api.accounts.signonRateLimit.max | int | quote }}
+          - name: APP_EMAIL_OTP_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.emailOtpRateLimit.max | int | quote }}
+          - name: APP_TWO_FACTOR_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.twofactor.rateLimit | int | quote }}
+          - name: APP_TWO_FACTOR_ATTEMPT_LIMIT
+            value: {{ .Values.api.accounts.twofactor.attempts.maxPerPeriod | int | quote }}
+          - name: APP_TWO_FACTOR_LOCK_WAIT_START
+            value: {{ .Values.api.accounts.twofactor.attempts.lockPeriodStartSecs | int | quote }}
+          - name: APP_TWO_FACTOR_LOCK_WAIT_END
+            value: {{ .Values.api.accounts.twofactor.attempts.lockPeriodEndSecs | int | quote }}
+          - name: APP_PASSWORD_RESET_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.passwordResetRateLimit.max | int | quote }}
           - name: APP_NEED_APPROVAL_ROLE_NAME
             value: approval-required
           - name: APP_VERIFY_EMAIL_ROLE_NAME
             value: verify-email
           - name: APP_MAX_KEY_VALUE_LENGTH
-            value: {{ .Values.api.accounts.data.maxValueLength | quote }}
+            value: {{ .Values.api.accounts.data.maxValueLength | int | quote }}
           - name: APP_USING_FACING_DATA_KEYS
             value: '{{- range $key := .Values.api.accounts.data.visibleKeys }}{{ $key }},{{- end }}'
           - name: APP_EDITABLE_DATA_KEYS
@@ -444,7 +457,7 @@ spec:
                 key: password
           {{- end }}
           - name: APP_SUBSCRIPTION_RPM
-            value: {{ .Values.api.accounts.chargebee.perUserRpm | quote }}
+            value: {{ .Values.api.accounts.chargebee.perUserRpm | int | quote }}
           
           #
           # The base URL of the frontend
@@ -508,6 +521,9 @@ spec:
 
           - name: APP_I_WANT_IPINFO_CONF_FILE
             value: /var/safesurfer/ipinfo/ipinfo.yaml
+
+          - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+            value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
           
         ports:
           - containerPort: {{ .Values.api.port }}
@@ -591,11 +607,34 @@ spec:
 # Horizontal pod autoscaler.
 #
 {{ if .Values.api.hpa.enabled }}
-{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not .Values.testFlags.forceLegacyHpa) }}
+{{- if and (semverCompare ">=1.23-0" .Capabilities.KubeVersion.Version) (not (.Values.testFlags).forceLegacyHpa) }}
 apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  minReplicas: {{ .Values.api.hpa.minReplicas }}
+  maxReplicas: {{ .Values.api.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.api.hpa.targetAverageMemoryUtilization }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.api.hpa.targetAverageCPUUtilization }}
 {{- else }}
 apiVersion: autoscaling/v2beta1
-{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
@@ -616,6 +655,7 @@ spec:
     resource:
       name: cpu
       targetAverageUtilization: {{ .Values.api.hpa.targetAverageCPUUtilization }}
+{{- end }}
 {{ end }}
 ---
 #
@@ -661,7 +701,9 @@ spec:
   tls:
   - hosts:
     - {{ .Values.api.ingress.host }}
-    {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    {{- if .Values.api.ingress.tls.secretName }}
+    secretName: {{ .Values.api.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
     secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
     {{- else }}
     secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-cert
@@ -682,6 +724,54 @@ spec:
 # Cert and issuer
 #
 {{ include "cert" (dict "cert" .Values.api.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingress.host) "Values" .Values) }}
+{{- end }}
+---
+{{ if .Values.api.ingressIpv6.enabled }}
+#
+# IPv6 Ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    {{ if .Values.api.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Values.api.ingressIpv6.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingressIpv6.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.api.ingressIpv6.class }}
+  tls:
+  - hosts:
+    - {{ .Values.api.ingressIpv6.host }}
+    {{- if .Values.api.ingressIpv6.tls.secretName }}
+    secretName: {{ .Values.api.ingressIpv6.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Values.api.ingressIpv6.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
+            port:
+              number: {{ .Values.api.svcPort }}
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Values.api.ingressIpv6.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingressIpv6.host) "Values" .Values) }}
 {{- end }}
 ---
 {{ if .Values.api.adminIngress.enabled }}

@@ -3,7 +3,7 @@
 - name: APP_CLICKHOUSE_HOST
   value: {{ .Values.clickhouse.external.connection.host }}
 - name: APP_CLICKHOUSE_PORT
-  value: {{ .Values.clickhouse.external.connection.port | quote }}
+  value: {{ .Values.clickhouse.external.connection.port | int | quote }}
 - name: APP_CLICKHOUSE_USERNAME
   valueFrom:
     secretKeyRef:

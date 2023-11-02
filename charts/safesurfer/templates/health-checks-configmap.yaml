@@ -1,0 +1,14 @@
+{{- if .Values.healthChecks.enabled }}
+---
+#
+# Configmap for status config.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-status-config
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+data:
+  status.yaml: |-
+    {{- toYaml .Values.healthChecks.spec | nindent 4 }}
+{{- end }}

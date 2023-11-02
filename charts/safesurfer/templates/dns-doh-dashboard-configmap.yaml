@@ -41,55 +41,90 @@ data:
       "liveNow": false,
       "panels": [
         {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "fill": 1,
-          "fillGradient": 0,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
           "gridPos": {
             "h": 9,
             "w": 12,
             "x": 0,
             "y": 0
           },
-          "hiddenSeries": false,
           "id": 2,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "nullPointMode": "null",
           "options": {
-            "alertThreshold": true
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
           },
-          "percentage": false,
-          "pluginVersion": "9.3.6",
-          "pointradius": 2,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
+          "pluginVersion": "9.4.7",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
@@ -99,9 +134,11 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_requests_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} * 100)",
+              "editorMode": "code",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
+              "range": true,
               "refId": "B"
             },
             {
@@ -109,94 +146,102 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_limits_cpu_cores{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} * 100)",
+              "editorMode": "code",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
+              "range": true,
               "refId": "C"
             }
           ],
-          "thresholds": [],
-          "timeRegions": [],
           "title": "DOH CPU %",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "mode": "time",
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "$$hashKey": "object:1027",
-              "format": "percent",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "$$hashKey": "object:1028",
-              "format": "short",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false
-          }
+          "type": "timeseries"
         },
         {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "fill": 1,
-          "fillGradient": 0,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
           "gridPos": {
             "h": 9,
             "w": 12,
             "x": 12,
             "y": 0
           },
-          "hiddenSeries": false,
           "id": 4,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "nullPointMode": "null",
           "options": {
-            "alertThreshold": true
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
           },
-          "percentage": false,
-          "pluginVersion": "9.3.6",
-          "pointradius": 2,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
+          "pluginVersion": "9.4.7",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "container_memory_working_set_bytes {namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "A"
@@ -206,9 +251,11 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_requests_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"})",
+              "editorMode": "code",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
+              "range": true,
               "refId": "B"
             },
             {
@@ -216,43 +263,16 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "min(kube_pod_container_resource_limits_memory_bytes{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"})",
+              "editorMode": "code",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
+              "range": true,
               "refId": "C"
             }
           ],
-          "thresholds": [],
-          "timeRegions": [],
           "title": "DOH Memory Bytes",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "mode": "time",
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "$$hashKey": "object:1079",
-              "format": "short",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "$$hashKey": "object:1080",
-              "format": "short",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false
-          }
+          "type": "timeseries"
         },
         {
           "aliasColors": {},
@@ -299,7 +319,7 @@ data:
             "alertThreshold": true
           },
           "percentage": false,
-          "pluginVersion": "9.3.6",
+          "pluginVersion": "9.4.7",
           "pointradius": 2,
           "points": false,
           "renderer": "flot",
@@ -314,7 +334,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_50th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_50th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_50th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_50th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -328,7 +348,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_90th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_90th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_90th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_90th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "90th Percentile",
               "range": true,
@@ -340,7 +360,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_99th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_99th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_99th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_99th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99th Percentile",
               "range": true,
@@ -352,7 +372,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.9th Percentile",
               "range": true,
@@ -364,7 +384,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_9999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_9999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_http_frontend_latency_9999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_http_frontend_latency_9999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.99th Percentile",
               "range": true,
@@ -448,7 +468,7 @@ data:
             "alertThreshold": true
           },
           "percentage": false,
-          "pluginVersion": "9.3.6",
+          "pluginVersion": "9.4.7",
           "pointradius": 2,
           "points": false,
           "renderer": "flot",
@@ -463,7 +483,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_50th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_50th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_50th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 1,
@@ -477,7 +497,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_90th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_90th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_90th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "90th Percentile",
               "range": true,
@@ -489,7 +509,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_99th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_99th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_99th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99th Percentile",
               "range": true,
@@ -501,7 +521,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.9th Percentile",
               "range": true,
@@ -513,7 +533,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_9999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_9999th{container=\"{{ include "dohContainerAndAppName" . }}\", kubernetes_namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
+              "expr": "sum(sum_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m])) / sum(count_over_time(dns_proxy_backend_tcp_latency_9999th{app=\"{{ include "dohContainerAndAppName" . }}\",  namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]))",
               "interval": "",
               "legendFormat": "99.99th Percentile",
               "range": true,
@@ -582,7 +602,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} |~ \"(level=error|level=panic|level=fatal)\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"} |~ \"(level=error|level=panic|level=fatal)\"",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -620,7 +640,7 @@ data:
                 "type": "loki",
                 "uid": "P8E80F9AEF21F6940"
               },
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "dohContainerAndAppName" . }}\"}",
               "legendFormat": "",
               "refId": "A"
             }
@@ -629,14 +649,16 @@ data:
           "type": "logs"
         }
       ],
-      "schemaVersion": 37,
+      "refresh": "",
+      "revision": 1,
+      "schemaVersion": 38,
       "style": "dark",
       "tags": [],
       "templating": {
         "list": []
       },
       "time": {
-        "from": "now-1h",
+        "from": "now-15m",
         "to": "now"
       },
       "timepicker": {
@@ -654,7 +676,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}",
-      "uid": "1zz1LDEMD",
+      "uid": null,
       "version": 1,
       "weekStart": ""
     }

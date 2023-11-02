@@ -107,6 +107,18 @@ spec:
                 configMapKeyRef:
                   name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
                   key: timezone
+            {{- if .Values.dns.dns.anonymousLogging.fullHistoryEnabled }}
+            - name: SS_ANONYMOUS_LOGGING_FULL_HISTORY_ENABLED
+              value: '1'
+            {{- end }}
+            {{- if .Values.dns.dns.anonymousLogging.allowOptOut }}
+            - name: SS_ANONYMOUS_LOGGING_OPT_OUT
+              value: '1'
+            {{- end }}
+            {{- if .Values.dns.dns.anonymousLogging.enabled }}
+            - name: SS_ANONYMOUS_LOGGING_ENABLED
+              value: '1'
+            {{- end }}
             {{- if .Values.dns.blockHostOverride }}
             - name: BLOCK_HOST
               value: {{ .Values.dns.blockHostOverride }}
@@ -119,14 +131,18 @@ spec:
             - name: PROTO_PLAIN_HOST
               value: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
             - name: ACCOUNT_QUERY_DOMAIN
-              value: {{ .Values.dns.dns.debugging.accountQueryDomain }}
+              value: {{ required "account lookup domain required" .Values.dns.dns.debugging.accountQueryDomain }}
             - name: PROTO_QUERY_DOMAIN
-              value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
+              value: {{ required "proto lookup domain required" .Values.dns.dns.debugging.protoQueryDomain }}
             - name: DOMAIN_LOOKUP_DOMAIN
               value: {{ required "dns domain lookup domain required" .Values.dns.dns.debugging.domainLookupDomain }}
             - name: EXPLAIN_LOOKUP_DOMAIN
               value: {{ required "dns explain lookup domain required" .Values.dns.dns.debugging.explainDomain }}
             # Clickhouse config
+            {{- if .Values.blockpage.enabledForUsersByDefault }}
+            - name: SS_BLOCK_PAGE_ENABLED_DEFAULT
+              value: '1'
+            {{- end }}
             {{- if (or .Values.dns.clickhoused.external.enabled .Values.dns.clickhoused.internal.enabled) }}
             - name: SS_ENABLE_CLICKHOUSED
               value: '1'
@@ -137,7 +153,7 @@ spec:
             - name: SS_CLICKHOUSED_PORT
               value: {{ .Values.dns.clickhoused.internal.frontend.udp.svcPort | quote }}
             - name: SS_CLICKHOUSED_HOST
-              value: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
+              value: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}.svc
             {{- else }}
             - name: SS_CLICKHOUSED_PORT
               value: {{ .Values.dns.clickhoused.external.port | quote }}
@@ -148,7 +164,7 @@ spec:
             # ipsetd config
             {{- if (and .Values.dns.ipsetd.internal.enabled .Values.dns.ipsetd.internal.frontend.udp.enabled) }}
             - name: SS_IPSETD_HOST
-              value: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.internal.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}.svc.cluster.local
+              value: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.internal.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}.svc
             - name: SS_IPSETD_PORT
               value: {{ .Values.dns.ipsetd.internal.frontend.udp.svcPort | quote }}
             {{- else if .Values.dns.ipsetd.external.enabled }}
@@ -223,8 +239,8 @@ spec:
             value: 'true'
           resources:
             {{- toYaml .Values.dns.dns.sidecarContainers.healthCheck.resources | nindent 12 }}
-        # Continuously dump accounts
-        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-manager-accounts" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverrideAccounts) }}
+        # Continuously dump to lmdb
+        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}
           image: {{ .Values.dns.dns.sidecarContainers.lmdbManager.image }}
           securityContext:
             {{- toYaml .Values.dns.dns.podSecurityContext | nindent 12 }}
@@ -234,11 +250,60 @@ spec:
                 configMapKeyRef:
                   name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
                   key: timezone
-            - name: LMDB_LOCATION
+            - name: APP_ACCOUNT_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountFullRebuildInterval | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxDelay | quote }}
+            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPlanAheadDuration | quote }}
+            - name: APP_CATEGORY_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.categoryFullRebuildInterval | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxDelay | quote }}
+            - name: APP_CATEGORY_OPTIONS_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.categoryOptionFullRebuildInterval | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxDelay | quote }}
+            - name: APP_DOMAIN_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.domainFullRebuildInterval | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxDelay | quote }}
+            - name: APP_STREAM_DOMAINS
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.streamDomains | quote }}
+            - name: APP_LMDB_MANAGER_MAP_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.mapSize | quote }}
+            - name: APP_LMDB_PATH
               value: /lmdb
+            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+            - name: APP_ACCOUNT_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPgIterSize | int | quote }}
+            - name: APP_DOMAIN_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainPgIterSize | int | quote }}
+            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.enabled | quote }}
+            {{- if .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.enabled }}
+            - name: APP_ACCOUNT_SEGMENTATION_SIZE
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.size | int | quote }}
+            {{- end }}
+            - name: APP_PG_CONN_TIMEOUT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.pgConnTimeout | quote }}
+            {{ include "loggingEnvs" (dict "level" .Values.dns.dns.sidecarContainers.lmdbManager.logLevel) | indent 12 }}
             #
             # DB Connection
             #
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.maxOpenConns | int | quote }}
             {{ include "dbEnvs" . | indent 12 }}
           {{- with .Values.dns.dns.extraEnv }}
               {{- toYaml . | nindent 12 }}
@@ -246,49 +311,13 @@ spec:
           {{- with .Values.dns.extraEnv }}
               {{- toYaml . | nindent 12 }}
           {{- end }}
-          command:
-          - python3
           args:
-          - /app/dump-accounts.py
-          - $(LMDB_LOCATION)
+          - live
           volumeMounts:
           - name: lmdb
             mountPath: /lmdb
           resources:
-            {{- toYaml .Values.dns.dns.sidecarContainers.lmdbManager.resources.accounts | nindent 12 }}
-        # Continuously dump domains
-        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-manager-domains" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverrideDomains) }}
-          image: {{ .Values.dns.dns.sidecarContainers.lmdbManager.image }}
-          securityContext:
-            {{- toYaml .Values.dns.dns.podSecurityContext | nindent 12 }}
-          env:
-            - name: TZ
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
-                  key: timezone
-            - name: LMDB_LOCATION
-              value: /lmdb
-            #
-            # DB Connection
-            #
-            {{ include "dbEnvs" . | indent 12 }}
-          {{- with .Values.dns.dns.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.dns.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-          {{- end }}
-          command:
-          - python3
-          args:
-          - /app/dump-domains.py
-          - $(LMDB_LOCATION)
-          volumeMounts:
-          - name: lmdb
-            mountPath: /lmdb
-          resources:
-            {{- toYaml .Values.dns.dns.sidecarContainers.lmdbManager.resources.domains | nindent 12 }}
+            {{- toYaml .Values.dns.dns.sidecarContainers.lmdbManager.resources | nindent 12 }}
         {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar }}
         {{- include "dohContainer" (dict "Values" .Values "Release" .Release "sidecar" true) | nindent 8 }}
         {{- end }}
@@ -301,14 +330,29 @@ spec:
       {{- end }}
       {{- end }}
       initContainers:
+        {{- if .Values.dns.dns.sysctls.enabled }}
+        - name: init-sysctl
+          image: busybox
+          command:
+          - sysctl
+          - -w
+          {{- range $k, $v := .Values.dns.dns.sysctls.settings }}
+          - {{$k}}={{$v}}
+          {{- end }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: False
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "32Mi"
+              cpu: "50m"
+        {{- end }}
         {{- if .Values.dns.dns.initContainers.iptablesProvisioner.enabled }}
         - name: {{ include "name" (dict "Release" .Release "name" "init-iptables" "nameOverride" .Values.dns.dns.initContainers.iptablesProvisioner.nameOverride) }}
-          image: {{ .Values.dns.dns.initContainers.iptablesProvisioner.image }}
-          securityContext:
-            capabilities:
-              add:
-                - NET_ADMIN
-                - NET_RAW
           env:
             - name: TZ
               valueFrom:
@@ -319,12 +363,87 @@ spec:
               value: "{{ .Values.dns.dns.bindPort | toString }}"
             - name: EXTERNAL_DEV
               value: {{ .Values.dns.dns.initContainers.iptablesProvisioner.ifcName }}
+            - name: UNIQUE_STR
+              value: {{ printf "%s-%s" .Release.Name .Release.Namespace | trunc 256 | quote }}
           {{- with .Values.dns.dns.initContainers.iptablesProvisioner.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with .Values.dns.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          image: {{ .Values.dns.dns.initContainers.iptablesProvisioner.image }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          resources:
+            {{- toYaml .Values.dns.dns.initContainers.iptablesProvisioner.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.dns.dns.initContainers.ip6tablesProvisioner.enabled }}
+        - name: {{ include "name" (dict "Release" .Release "name" "init-ip6tables" "nameOverride" .Values.dns.dns.initContainers.ip6tablesProvisioner.nameOverride) }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: DNS_PORT
+              value: "{{ .Values.dns.dns.bindPort | toString }}"
+            - name: EXTERNAL_DEV
+              value: {{ .Values.dns.dns.initContainers.ip6tablesProvisioner.ifcName }}
+            - name: UNIQUE_STR
+              value: {{ printf "%s-%s" .Release.Name .Release.Namespace | trunc 256 | quote }}
+            {{- if not .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.enabled }}
+            - name: DISABLE_CONNTRACK
+              value: '1'
+            {{- end }}
+          {{- with .Values.dns.dns.initContainers.ip6tablesProvisioner.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.dns.dns.initContainers.ip6tablesProvisioner.image }}
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          resources:
+            {{- toYaml .Values.dns.dns.initContainers.ip6tablesProvisioner.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.enabled }}
+        - name: {{ include "name" (dict "Release" .Release "name" "udp-over-ipv6-address-rewrite" "nameOverride" .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.nameOverride) }}
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+                  key: timezone
+            - name: DNS_PORT
+              value: "{{ .Values.dns.dns.bindPort | toString }}"
+            - name: EXTERNAL_DEV
+              value: {{ .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.ifcName }}
+            - name: LB_IP
+              value: {{ required "udpOverIpv6AddressRewrite.loadBalancerIp required" .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.loadBalancerIp | quote }}
+            - name: UNIQUE_STR
+              value: {{ printf "%s-%s" .Release.Name .Release.Namespace | trunc 256 | quote }}
+          {{- with .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.image }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          resources:
+            {{- toYaml .Values.dns.dns.initContainers.udpOverIpv6AddressRewrite.resources | nindent 12 }}
         {{- end }}
         - name: {{ include "name" (dict "Release" .Release "name" "init-lmdb" "nameOverride" .Values.dns.dns.initContainers.initLmdb.nameOverride) }}
           image: {{ .Values.dns.dns.initContainers.initLmdb.image }}
@@ -334,30 +453,86 @@ spec:
                 configMapKeyRef:
                   name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
                   key: timezone
-            - name: LMDB_LOCATION
+            - name: APP_STREAM_DOMAINS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.streamDomains | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxDelay | quote }}
+            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPlanAheadDuration | quote }}
+            - name: APP_LMDB_MANAGER_MAP_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.mapSize | quote }}
+            - name: APP_LMDB_PATH
               value: /lmdb
-            # Determine anonymous logging behavior
-            {{- if .Values.dns.dns.anonymousLogging.enabled }}
-            - name: SS_ENABLE_ANONYMOUS_LOGGING
-              value: '1'
+            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+            - name: APP_ACCOUNT_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPgIterSize | int | quote }}
+            - name: APP_DOMAIN_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.domainPgIterSize | int | quote }}
+            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountSegmentation.enabled | quote }}
+            {{- if .Values.dns.dns.initContainers.initLmdb.accountSegmentation.enabled }}
+            - name: APP_ACCOUNT_SEGMENTATION_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.accountSegmentation.size | int | quote }}
             {{- end }}
-            {{- if .Values.dns.dns.anonymousLogging.fullHistoryEnabled }}
-            - name: SS_ENABLE_ANONYMOUS_FULL_HISTORY
-              value: '1'
-            {{- end }}
+            - name: APP_PG_CONN_TIMEOUT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.pgConnTimeout | quote }}
             #
             # DB Connection
             #
-            {{ include "dbEnvs" . | indent 12 }}
-          {{- with .Values.dns.dns.initContainers.initLmdb.extraEnv }}
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.maxOpenConns | int | quote }}
+            {{- include "dbEnvs" . | nindent 12 }}
+            {{- include "loggingEnvs" (dict "level" .Values.dns.dns.initContainers.initLmdb.logLevel) | nindent 12 }}
+            {{- with .Values.dns.dns.initContainers.initLmdb.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.dns.extraEnv }}
-            {{- toYaml . | nindent 10 }}
-          {{- end }}
+            {{- end }}
+            {{- with .Values.dns.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          args:
+            - init
           volumeMounts:
-          - name: lmdb
-            mountPath: /lmdb
+            - name: lmdb
+              mountPath: /lmdb
+          resources:
+            {{- toYaml .Values.dns.dns.initContainers.initLmdb.resources | nindent 12 }}
+        - name: {{ include "name" (dict "Release" .Release "name" "lmdb-permissions") }}
+          image: busybox
+          command:
+            - 'chmod'
+            - '-R'
+            - '777'
+            - '/lmdb'
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          volumeMounts:
+            - name: lmdb
+              mountPath: /lmdb
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "32Mi"
+              cpu: "50m"
       volumes:
         - name: lmdb
           emptyDir: {}

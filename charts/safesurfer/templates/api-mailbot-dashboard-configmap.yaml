@@ -46,7 +46,7 @@ data:
           },
           "targets": [
             {
-              "expr": "{namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "mailbot" "nameOverride" .Values.api.alerts.mailbot.nameOverride) }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "mailbot" "nameOverride" .Values.api.alerts.mailbot.nameOverride) }}\"}",
               "refId": "A"
             }
           ],
@@ -82,7 +82,7 @@ data:
       },
       "timezone": "",
       "title": "{{ include "name" (dict "Release" .Release "name" "mailbot" "nameOverride" .Values.api.alerts.mailbot.nameOverride) }}",
-      "uid": "Qdg8HBfGk",
+      "uid": null,
       "variables": {
         "list": []
       },
