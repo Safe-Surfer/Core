@@ -107,7 +107,7 @@ categorizer:
     newDomainNotifierUser:
       enabled: true
       queueOnly: false
-      user: Auto-Categorizer
+      user: New-Domain-Notifier
       accessKey: generate-a-password
   autoCat:
     classifier:
@@ -133,7 +133,7 @@ dns:
   newDomainNotifier:
     enabled: true
     categorizer:
-      user: Auto-Categorizer
+      user: New-Domain-Notifier
       key: generate-a-password # The password you generated for the newDomainNotifierUser in the previous code block
     addConfig:
       queue: false

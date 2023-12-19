@@ -524,6 +524,10 @@ spec:
 
           - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
             value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+
+          # Blocking config
+          - name: APP_MAX_PLAN_AHEAD_DURATION
+            value: {{ .Values.api.blocking.maxPlanAheadDuration | quote }}
           
         ports:
           - containerPort: {{ .Values.api.port }}

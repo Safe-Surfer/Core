@@ -44,7 +44,7 @@ dns:
     ## Amount of pods to deploy. Overridden by the hpa if present.
     replicas: 2
     ## Container image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns:1.16.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.17.0
     ## How to roll out new versions
     deploymentStrategy:
       rollingUpdate:
@@ -112,6 +112,9 @@ dns:
       ## A domain for checking what action will occur if the domain is queried. It's a TLD,
       ## used like domainLookupDomain.
       explainDomain: explain.safesurfer
+      ## A domain for checking what action will occur for a domain of a particular category
+      ## (by ID). E.g. dig 1.category.safesurfer TXT.
+      categoryDomain: category.safesurfer
     ## Configure how much to log for anonymous requests, e.g. where we can't recognize
     ## an account. These can be accessed through clickhouse directly.
     ## The default is to not log anonymous traffic.
@@ -251,7 +254,7 @@ dns:
         extraEnv: []
         ## Container image to use for lmdb manager.
         logLevel: info
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.17.0
         securityContext:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
@@ -380,7 +383,7 @@ dns:
         extraEnv: []
         logLevel: info
         ## lmdb manager image for the initial run.
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.17.0
         ## Default resources is roughly the sum of all default container resources.
         resources:
           requests:
@@ -1248,7 +1251,7 @@ api:
   ## How many instances of the API to deploy. Overridden by the autoscaler if present.
   replicas: 2
   ## The image to use for the API.
-  image: registry.gitlab.com/safesurfer/core/apps/api:10.31.0
+  image: registry.gitlab.com/safesurfer/core/apps/api:10.32.0
   ## The port to run on.
   port: 8080
   ## The port to run the admin API on. The only need to change this is if it clashes
@@ -1302,6 +1305,12 @@ api:
   ## https://safesurfer.gitlab.io/api-docs/
   ## A commented out example follows:
   routesConfig:
+    "166": # /v2/user/live-updates websocket
+      timeout: 10m
+    "198": # /v2/quotas/{name}/live-updates-internal websocket
+      timeout: 10m
+    "227": # /v2/blocking/this-device/apps/live-updates websocket
+      timeout: 10m
     # "24":
     #   disable: true
     # "62":
@@ -1926,6 +1935,12 @@ api:
           memory: "128Mi"
           cpu: "100m"
 
+  ## Configure changing blocking settings and viewing blocking status
+  blocking:
+    ## The maximum amount of time that users can request to see in the future
+    ## when requesting blocking plans.
+    maxPlanAheadDuration: 730h
+
   ## Configure how devices are managed
   devices:
     ## If a router is registered without an explicit name, a generated one is used. E.g. if this parameter
@@ -2340,7 +2355,7 @@ categorizer:
     ## The amount of categorizer instances. Overridden by the HPA if created.
     replicas: 1
     ## The image to use for the categorizer
-    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.22.1
+    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.23.0
     ## The max amount of open/idle connections to use when connecting to the database.
     ## Setting these to 0 uses the default values, which are currently 2 and unlimited
     ## respectively but may change in the future.
@@ -2668,7 +2683,7 @@ categorizer:
       jobs:
         ## Specify a custom name, otherwise it's based on the name of the release
         nameOverride:
-        image: registry.gitlab.com/safesurfer/core/apps/crawler:5.18.1
+        image: registry.gitlab.com/safesurfer/core/apps/crawler:5.19.0
         ## The resources for each crawler instance. This contains a chrome process, so think big!
         resources:
           requests:
@@ -2793,7 +2808,7 @@ db:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## The current schema version. The argument is an image that runs migrations against the database.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.5.0
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.6.0
   ## Configure an external database connection, see above.
   external:
     ## Whether to use an external database. Either this or the in-cluster database must be enabled.

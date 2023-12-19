@@ -227,7 +227,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "sum(rate(pdns_recursor_all_outqueries{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\",app=\"{{ include "dnsContainerAndAppName" . }}\"}[10m]))",
+              "expr": "sum(rate(pdns_recursor_questions{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\",app=\"{{ include "dnsContainerAndAppName" . }}\"}[10m]))",
               "interval": "",
               "legendFormat": "total",
               "refId": "A"
@@ -237,7 +237,7 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "expr": "rate(pdns_recursor_all_outqueries{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\",app=\"{{ include "dnsContainerAndAppName" . }}\"}[10m])",
+              "expr": "rate(pdns_recursor_questions{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\",app=\"{{ include "dnsContainerAndAppName" . }}\"}[10m])",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "refId": "B"

@@ -349,7 +349,7 @@ The DNS can run on any linux OS supporting systemd and docker. It only requires 
 > **Warning**
 > The configuration produced by `ss-config` assumes a fresh system - it makes several changes to the system configuration as necessary, such as disabling `systemd-resolved`, enabling other services, and overwriting docker config.
 
-`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/1.1.2/).
+`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/1.2.0/).
 
 Rename the binary to `ss-config`, ensure it has execute permissions, and move it to your path. Alternatively you can use it directly from the download location.
 

@@ -131,13 +131,15 @@ spec:
             - name: PROTO_PLAIN_HOST
               value: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
             - name: ACCOUNT_QUERY_DOMAIN
-              value: {{ required "account lookup domain required" .Values.dns.dns.debugging.accountQueryDomain }}
+              value: {{ .Values.dns.dns.debugging.accountQueryDomain }}
             - name: PROTO_QUERY_DOMAIN
-              value: {{ required "proto lookup domain required" .Values.dns.dns.debugging.protoQueryDomain }}
+              value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
             - name: DOMAIN_LOOKUP_DOMAIN
-              value: {{ required "dns domain lookup domain required" .Values.dns.dns.debugging.domainLookupDomain }}
+              value: {{ .Values.dns.dns.debugging.domainLookupDomain }}
             - name: EXPLAIN_LOOKUP_DOMAIN
-              value: {{ required "dns explain lookup domain required" .Values.dns.dns.debugging.explainDomain }}
+              value: {{ .Values.dns.dns.debugging.explainDomain }}
+            - name: CATEGORY_LOOKUP_DOMAIN
+              value: {{ .Values.dns.dns.debugging.categoryDomain }}
             # Clickhouse config
             {{- if .Values.blockpage.enabledForUsersByDefault }}
             - name: SS_BLOCK_PAGE_ENABLED_DEFAULT

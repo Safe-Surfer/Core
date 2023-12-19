@@ -1,5 +1,42 @@
 # Changelog
 
+## 9.0.0
+
+### Breaking changes
+- `newDomainNotifierUser.user` may no longer be named `Auto-Categorizer`, since this is also the default username for `addFromDNS`, which could result in `addFromDNS` not working.
+- Remove most of the v1 `/categories` and `/sites` endpoints from the API, as they have not been used in a long time. Only `/categories/names` is preserved, as it is still used in the default dashboard and lacks a suitable replacement at this stage.
+
+### Migration guide
+- If you have set `newDomainNotifierUser.user` to `Auto-Categorizer`, rename it something else. A suggested replacement is `New-Domain-Notifier`.
+
+Other than this, no special migration steps are necessary, unless the v1 `/categories` or `/sites` API endpoints were being used in some way to change blocking settings. However, no available implementation for any platform was using these. 
+
+### Non-breaking changes
+
+#### DNS
+- Improve performance and reduce LMDB size.
+- Add `dns.dns.debugging.categoryDomain`, which can be queried to view the current action for a particular category for the requesting device.
+- The debugging domains under `dns.dns.debugging` can now be set to the empty string to disable them individually.
+
+#### API
+- Add `GET /v2/blocking/this-device/categories/{id}/resolved` to get the resolved category model for a single category for the requesting device.
+- Add `GET /v2/blocking/by-category/{id}/plans` to get the blocking plans for a category across the whole account.
+- Add `api.blocking.maxPlanAheadDuration` in `values.yaml` to decide the maximum amount of time users can request to see in the future when requesting blocking plans.
+- Email OTP codes are now case-insensitive. Previously they only contained capital letters and would not accept lowercase, now either are accepted.
+- The request config for websocket endpoints now configures the maximum duration websockets may be connected. Previously, the maximum duration for websocket endpoints was ignored. To assist with this, default values have been added of `10m`.
+- Fix a bug where app live updates would not be dispatched after the API instance is running for a certain amount of time.
+
+#### Admin App
+- Add APIs to change Email OTP settings for individual users.
+- Fix domains with internationalized TLDs being called invalid.
+- Fix internationalized domains with punycode containing dashes being called invalid.
+
+#### Crawler
+- Retry through network errors on the initial load of a page. The time taken doing this is limited to, and counts against, the max page wait for each page.
+
+#### Monitoring
+- Fix some Grafana dashboards for auto-categorization not working for some setups.
+
 ## 8.0.0
 
 ### Breaking changes

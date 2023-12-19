@@ -254,6 +254,9 @@ spec:
             value: '2'
 
           {{- if .Values.categorizer.adminApp.newDomainNotifierUser.enabled }}
+          {{- if eq .Values.categorizer.adminApp.newDomainNotifierUser.user "Auto-Categorizer" }}
+          {{ fail `categorizer.adminApp.newDomainNotifierUser.accessKey must not be "Auto-Categorizer"` }}
+          {{- end }}
           - name: ACCESS_KEY_FOR_{{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.user | upper }}
             value: {{ required "Categorizer account for new domain notifier required" .Values.categorizer.adminApp.newDomainNotifierUser.accessKey }}
           {{- if .Values.categorizer.adminApp.newDomainNotifierUser.queueOnly }}
