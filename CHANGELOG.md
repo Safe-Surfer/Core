@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.0.1
+
+### Non-breaking changes
+
+#### DNS
+- Integrate upstream PowerDNS patches to fix [CVE-2023-50387/CVE-2023-50868](https://doc.powerdns.com/recursor/security-advisories/powerdns-advisory-2024-01.html).
+
 ## 9.0.0
 
 ### Breaking changes

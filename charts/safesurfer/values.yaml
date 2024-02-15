@@ -44,7 +44,7 @@ dns:
     ## Amount of pods to deploy. Overridden by the hpa if present.
     replicas: 2
     ## Container image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns:1.17.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.17.1
     ## How to roll out new versions
     deploymentStrategy:
       rollingUpdate:
