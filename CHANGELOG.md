@@ -1,6 +1,6 @@
 # Changelog
 
-## Next
+## 10.0.0
 
 ### Breaking changes
 - Many requests on the API that require user IP address information will now fail and return 500 if `api.realIPHeader` is not configured correctly. For more details, see the API section below.
