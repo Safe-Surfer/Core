@@ -101,6 +101,15 @@ data:
 {{- end }}
 {{- end }}
 ---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# ipinfo secret, if any
+#
+{{- if .Values.api.nudityDetectionProvider }}
+{{- include "nudityDetectionProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.nudityDetectionProvider "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
 #
 # Secret for google play developer API.
 #
@@ -192,6 +201,9 @@ spec:
         {{- if .Values.api.ipInfoProvider }}
         checksum/ipinfo: {{ include "ipinfoProviderObject" (dict "Values" .Values "key" .Values.api.ipInfoProvider) | sha256sum }}
         {{- end }}
+        {{- if .Values.api.nudityDetectionProvider }}
+        checksum/nuditydetection: {{ include "nudityDetectionProviderObject" (dict "Values" .Values "key" .Values.api.nudityDetectionProvider) | sha256sum }}
+        {{- end }}
     spec:
       imagePullSecrets:
       - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
@@ -213,6 +225,15 @@ spec:
           secretName: ipinfo-config-{{ .Values.api.ipInfoProvider }}
           {{- else }}
           secretName: {{ include "name" (dict "Release" .Release "name" (printf "ipinfo-config-%s" .Values.api.ipInfoProvider)) }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.api.nudityDetectionProvider }}
+      - name: nuditydetection
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: nuditydetection-config-{{ .Values.api.nudityDetectionProvider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "nuditydetection-config-%s" .Values.api.nudityDetectionProvider)) }}
           {{- end }}
       {{- end }}
       - name: routes-config
@@ -346,6 +367,22 @@ spec:
             value: {{ .Values.api.accounts.qrAuth.tokenLength | int | quote }}
           - name: APP_QR_TOKEN_VALIDITY_DURATION
             value: {{ .Values.api.accounts.qrAuth.tokenValidityDuration }}
+          - name: APP_DEVICE_METADATA_MAX_VALUE_LENGTH
+            value: {{ .Values.api.devices.metadata.maxValueLength | int | quote }}
+          {{- range $key := .Values.api.devices.metadata.keys }}
+          {{- if not (regexMatch `^[\w\-]+$` $key) }}
+          {{- fail (printf "api.devices.metadata.keys contains invalid key %s, only letters/numbers/dashes/underscore are allowed" $key) }}
+          {{- end }}
+          {{- end }}
+          {{- range $key := .Values.api.devices.metadata.editableKeys }}
+          {{- if not (regexMatch `^[\w\-]+$` $key) }}
+          {{- fail (printf "api.devices.metadata.editableKeys contains invalid key %s, only letters/numbers/dashes/underscore are allowed" $key) }}
+          {{- end }}
+          {{- end }}
+          - name: APP_DEVICE_METADATA_KEYS
+            value: '{{- range $key := .Values.api.devices.metadata.keys }}{{ $key }},{{- end }}'
+          - name: APP_EDITABLE_DEVICE_METADATA_KEYS
+            value: '{{- range $key := .Values.api.devices.metadata.editableKeys }}{{ $key }},{{- end }}'
             
           #
           # Web push data
@@ -470,16 +507,52 @@ spec:
           #
           - name: APPLE_MOBILECONFIG_DOH_ADDRESSES
             value: {{ .Values.api.devices.appleMobileConfig.dohAddresses | quote }}
-          - name: APPLE_MOBILECONFIG_CONTENT_PAYLOAD_IDENTIFIER
-            value: {{ .Values.api.devices.appleMobileConfig.payloadContentIdentifier }}
           - name: APPLE_MOBILECONFIG_DOH_HOST
             value: {{ .Values.api.devices.appleMobileConfig.dohHost }}
           - name: APPLE_MOBILECONFIG_PAYLOAD_DESCRIPTION
             value: {{ .Values.api.devices.appleMobileConfig.description }}
           - name: APPLE_MOBILECONFIG_PAYLOAD_DISPLAY_NAME
             value: {{ .Values.api.devices.appleMobileConfig.name }}
-          - name: APPLE_MOBILECONFIG_PAYLOAD_IDENTIFIER
-            value: {{ .Values.api.devices.appleMobileConfig.payloadIdentifier }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_STABLE
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveStable | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_BETA
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveBeta | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_NIGHTLY
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveNightly | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_CHROME
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.chrome | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_EDGE
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.edge | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_VIVALDI
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.vivaldi | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_CHROMIUM
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.chromium | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_FIREFOX
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.firefox | quote }}
+          - name: APPLE_MOBILECONFIG_SETTINGS_YANDEX
+            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.yandex | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_PAYLOAD
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.payload | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_DNS_SETTINGS
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.dnsSettings | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_STABLE
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveStable | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_BETA
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveBeta | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_NIGHTLY
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveNightly | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_CHROME
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.chrome | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_EDGE
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.edge | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_VIVALDI
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.vivaldi | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_CHROMIUM
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.chromium | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_FIREFOX
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.firefox | quote }}
+          - name: APPLE_MOBILECONFIG_IDENTIFIER_YANDEX
+            value: {{ .Values.api.devices.appleMobileConfig.identifiers.yandex | quote }}
 
           #
           # Config for google play subscriptions.
@@ -522,6 +595,9 @@ spec:
           - name: APP_I_WANT_IPINFO_CONF_FILE
             value: /var/safesurfer/ipinfo/ipinfo.yaml
 
+          - name: APP_NUDITY_DETECTION_PROVIDERS_CONF_FILE
+            value: /var/safesurfer/nuditydetection/nuditydetection.yaml
+
           - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
             value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
 
@@ -561,6 +637,10 @@ spec:
         {{- if .Values.api.ipInfoProvider }}
           - name: ipinfo
             mountPath: /var/safesurfer/ipinfo
+        {{- end }}
+        {{- if .Values.api.nudityDetectionProvider }}
+          - name: nuditydetection
+            mountPath: /var/safesurfer/nuditydetection
         {{- end }}
 ---
 #

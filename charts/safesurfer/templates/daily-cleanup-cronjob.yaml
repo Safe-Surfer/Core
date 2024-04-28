@@ -48,6 +48,10 @@ spec:
               value: {{ .Values.api.dailyCleanup.timeouts.notificationsLog }}
             - name: APP_CASTS_TIMEOUT
               value: {{ .Values.api.dailyCleanup.timeouts.casts }}
+            - name: APP_NUDITY_DETECTION_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.nudityDetections }}
+            - name: APP_LOCATION_HISTORY_TIMEOUT
+              value: {{ .Values.api.dailyCleanup.timeouts.locationHistory }}
             - name: APP_CHARGEBEE_PRODUCT_CATALOG_2
               value: {{ .Values.api.accounts.chargebee.productCatalog2 | quote }}
             {{ if .Values.api.accounts.chargebee.site }}

@@ -72,6 +72,11 @@ spec:
         configMap:
           name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}-status-config
       automountServiceAccountToken: false
+      dnsPolicy: {{ .Values.healthChecks.dnsPolicy }}
+      {{- if .Values.healthChecks.dnsConfig }}
+      dnsConfig:
+        {{- toYaml .Values.healthChecks.dnsConfig | nindent 8 }}
+      {{- end }}
       containers:
       - name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
         image: {{ .Values.healthChecks.image }}

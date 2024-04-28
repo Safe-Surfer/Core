@@ -161,11 +161,32 @@ api:
   devices:
     appleMobileConfig:
       dohAddresses: xx.xx.xx.xx
-      payloadContentIdentifier: com.example.dnsSettings
       dohHost: secure-dns.ss.example.com
       description: Use DNS filtering and logging
       name: Secure DNS
-      payloadIdentifier: com.example.profile
+      extraSettings:
+        # Make browsers use it by default
+        braveStable: true
+        braveBeta: true
+        braveNightly: true
+        chrome: true
+        edge: true
+        vivaldi: true
+        chromium: true
+        firefox: true
+        yandex: true
+      identifiers:
+        payload: com.example.profile
+        dnsSettings: com.example.profile.dnsSettings
+        braveStable: com.example.profile.bravestablesettings
+        braveBeta: com.example.profile.bravebetasettings
+        braveNightly: com.example.profile.bravenightlysettings
+        chrome: com.example.profile.chromesettings
+        edge: com.example.profile.edgesettings
+        vivaldi: com.example.profile.vivaldisettings
+        chromium: com.example.profile.chromiumsettings
+        firefox: com.example.profile.firefoxsettings
+        yandex: com.example.profile.yandexsettings
 ```
 
 > **Warning**

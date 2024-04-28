@@ -254,6 +254,8 @@ spec:
                   key: timezone
             - name: APP_ACCOUNT_FULL_REBUILD_INTERVAL
               value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountFullRebuildInterval | quote }}
+            - name: APP_ACCOUNT_FULL_REBUILD_WINDOW
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountFullRebuildWindow | quote }}
             - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
               value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxBatchSize | int | quote }}
             - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
@@ -274,6 +276,8 @@ spec:
               value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxDelay | quote }}
             - name: APP_DOMAIN_FULL_REBUILD_INTERVAL
               value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.domainFullRebuildInterval | quote }}
+            - name: APP_DOMAIN_FULL_REBUILD_WINDOW
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.domainFullRebuildWindow | quote }}
             - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
               value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxBatchSize | int | quote }}
             - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY

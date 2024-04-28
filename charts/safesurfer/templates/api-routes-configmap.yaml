@@ -31,9 +31,10 @@ data:
       "13":
         disable: true # linked IP
       {{- end }}
-    {{- if .Values.api.quotas }}
     quotas:
       {{- toYaml .Values.api.quotas | nindent 6 }}
+    {{- if .Values.api.extraQuotas }}
+      {{- toYaml .Values.api.extraQuotas | nindent 6 }}
     {{- end }}
     plans:
       {{- if .Values.api.accounts.anyPlanConfig }}

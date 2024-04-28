@@ -241,20 +241,28 @@ dns:
           size: 30_000
         ## Run a full rebuild of accounts this often, starting from when the DNS starts.
         accountFullRebuildInterval: 12h
+        ## Allow this amount of window around the accountFullRebuildInterval. The default value of
+        ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+        ## Setting this to 0h removes any randomness and rebuilds exactly every accountFullRebuildInterval.
+        accountFullRebuildWindow: 4h
         ## Run a full rebuild of categories this often, starting from when the DNS starts.
         categoryFullRebuildInterval: 30m
         ## Run a full rebuild of category options this often, starting from when the DNS starts.
         categoryOptionFullRebuildInterval: 30m
         ## Run a full rebuild of domains this often, starting from when the DNS starts.
         domainFullRebuildInterval: 24h
+        ## Allow this amount of window around the domainFullRebuildInterval. The default value of
+        ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+        ## Setting this to 0h removes any randomness and rebuilds exactly every domainFullRebuildInterval.
+        domainFullRebuildWindow: 4h
         ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
-        ## but prevents live updates from working while a full domain rebuild is running.
+        ## but live updates will queue while a full domain rebuild is running.
         streamDomains: true
         ## Extra environment variables for lmdb manager.
         extraEnv: []
         ## Container image to use for lmdb manager.
         logLevel: info
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.17.0
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.18.0
         securityContext:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
@@ -373,7 +381,7 @@ dns:
         ## This setting also applies to the lmdbManager sidecar container.
         accountPlanAheadDuration: 168h
         ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
-        ## but prevents live updates from working while a full domain rebuild is running.
+        ## but live updates will queue while a full domain rebuild is running.
         streamDomains: true
         ## The size of the memory-mapped database. On linux, this is not a disk-space or memory requirement
         ## and should be set as large as possible, per http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5.
@@ -383,7 +391,7 @@ dns:
         extraEnv: []
         logLevel: info
         ## lmdb manager image for the initial run.
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.17.0
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.18.0
         ## Default resources is roughly the sum of all default container resources.
         resources:
           requests:
@@ -614,7 +622,7 @@ dns:
       ## validity of the backend cert.
       ignoreCert: false
     ## Custom DOH forwarder image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.1
     ## How much to log
     logLevel: info
     ## Extra environment variables for the DOH container.
@@ -663,9 +671,6 @@ dns:
       ## Any extra annotations to add to the service
       annotations:
       ## Whether to create a Network Endpoint Group for DOH on the Google Cloud Platform.
-      ## This only makes sense for DOH, since the DOT port isn't available for global
-      ## load balancing, and DNSCrypt must run with the same IP as plain DNS (and UDP
-      ## load balancing isn't available.)
       isGCPNEG: false
     ## Configure external access to DOH over IPv6.
     ipv6Service:
@@ -744,7 +749,7 @@ dns:
       ## validity of the backend cert.
       ignoreCert: false
     ## Container image for DOT forwarder.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.0
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.1
     ## How much to log
     logLevel: info
     ## Extra env for the DOT container.
@@ -792,6 +797,8 @@ dns:
       loadBalancerIP:
       ## Any extra annotations to add to the service
       annotations:
+      ## Whether to create a Network Endpoint Group for DOT on the Google Cloud Platform.
+      isGCPNEG: false
     ## Configure external access to DOT over IPv6.
     ipv6Service:
       type: LoadBalancer
@@ -1251,7 +1258,7 @@ api:
   ## How many instances of the API to deploy. Overridden by the autoscaler if present.
   replicas: 2
   ## The image to use for the API.
-  image: registry.gitlab.com/safesurfer/core/apps/api:10.32.0
+  image: registry.gitlab.com/safesurfer/core/apps/api:10.33.0
   ## The port to run on.
   port: 8080
   ## The port to run the admin API on. The only need to change this is if it clashes
@@ -1279,13 +1286,20 @@ api:
   ## (which is not usually correct). Can parse headers that provide a comma-separated list of IP addresses, such
   ## as X-Forwarded-For. In this case, it will use the first value in the comma-separated list, corresponding to
   ## the most recent hop. Headers containing just a single value, e.g. X-Real-Ip can also be parsed.
-  ## Getting this setting wrong can be a security vulnerability if IP linking is enabled, since it could
+  ## Getting this setting wrong can be a security vulnerability if `ipLinking` is enabled, since it could
   ## allow users to claim an IP not truly theirs.
+  ## Note that it is possible to make the API believe you are any source IP when requested from inside the cluster and using realIPHeader.
+  ## Although to take any malicious action they would also need a valid auth token, which would require compromising the control plane
+  ## or database.
+  ## If this is a concern, you can use a [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) to ensure only
+  ## necessary namespaces/pods can connect to the pods in the Safe Surfer release's namespace.
   realIPHeader: X-Forwarded-For
   ## Optionally reference a key of .providers.ipinfo to enable features of the API that require IP geolocation:
   ## - Auto-determining a chargebee plan according to country
   ## - Forcing an email OTP when a new location is detected, see .api.accounts.forceEmailOtpOnUnknownIpField
   ipInfoProvider:
+  ## Optionally reference a key of .providers.nuditydetection to enable double-verification of screencast events:
+  nudityDetectionProvider:
   ## Configure IP linking, allowing users to link their account or devices to their current external IP.
   ## Disabled by default, but IP linking API endpoints can still be used using admin auth.
   ipLinking:
@@ -1332,12 +1346,15 @@ api:
       - 61 # Add cast
       - 120 # Add evasion attempt
       - 130 # Add notification
-      - 227 # app live updates
+      - 167 # Set version
+      - 227 # App live updates
       - 220 # Add apps
       - 221 # Delete app
       - 222 # Put apps
       - 223 # Get and enable self service token
       - 228 # Set timer running status
+      - 236 # Get own metadata
+      - 240 # Location
     router:
       routes:
       - 11 # Refresh JWT
@@ -1359,7 +1376,7 @@ api:
       routes:
       - 223 # Get and enable self service token
   ## Configure the default resource quotas for each user. You can override these on an individual basis through
-  ## the admin app, or for particular plans or addons.
+  ## the admin app, or for particular plans or addons. You can define extra quotas through the "extraQuotas" field below.
   quotas:
     ## The amount of distinct alert emails that the user can create. If this quota is 0, the mailbot
     ## will not send alert emails for the account whose quota is 0. The default setup is to allow
@@ -1429,6 +1446,18 @@ api:
     ## off the app ID tracking feature, which is the default.
     apps_per_device:
       maxValue: 0
+    ## The max amount of nudity detections per account per day. Setting this to 0 effectively turns
+    ## off this feature, which is the default. This only affects double-verification of nudity detections.
+    ## If the quota is exceeded, new detections can still be added, but will not be double-verified.
+    nudity_detections:
+      maxValue: 0
+    ## The max amount of location history across the whole account. Setting this to 0 effectively turns
+    ## off this feature, which is the default.
+    location_history:
+      maxValue: 0
+
+  ## Arbitrary quotas to keep track of, in the same format as above.
+  extraQuotas: {}
 
   ## Configure the ingress, allowing HTTP traffic to reach the API from the internet.
   ## The "host" field here is templated in other places, such as the frontend. Therefore
@@ -1792,6 +1821,7 @@ api:
           #   prorateOnUpgrade: true
           #   prorateOnDowngrade: true
           #   invoiceImmediately: false
+          #   requireActive: false
           #   title: ''
           #   icon: ''
           #   description: ''
@@ -1927,12 +1957,12 @@ api:
       nameOverride:
       ## If set to debug or lower, the sent emails and arguments are also logged to the console.
       logLevel: info
-      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.5.0
+      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.6.0
       ## Resources: if requests are specified the task may fail to schedule and emails are missed.
       ## the used resources are small and not taken up for very long.
       resources:
         limits:
-          memory: "128Mi"
+          memory: "256Mi"
           cpu: "100m"
 
   ## Configure changing blocking settings and viewing blocking status
@@ -1946,21 +1976,81 @@ api:
     ## If a router is registered without an explicit name, a generated one is used. E.g. if this parameter
     ## is "Wifi", the generated name would be "Wifi 2" for the second unnamed device.
     routerPlaceholderName: WiFi 
+    ## Configure device metadata, a way of associating arbitrary key/value pairs with devices. By default this is not
+    ## allowed since no keys are configured.
+    metadata:
+      ## The max length of any values. This is enforced at the time when metadata is submitted, i.e. lowering
+      ## this will not delete already submitted data that is longer.
+      maxValueLength: 1000
+      ## The valid key names. This is enforced at the time when metadata is submitted, i.e. removing keys
+      ## will not delete them from existing devices and they will still be returned by the API.
+      ## Must be alphanumeric, dashes and underscores are allowed.
+      keys: []
+      ## e.g:
+      ## - key1
+      ## - key2
+      ## Which keys may be edited or removed after submission. If a key is present in keys but not in editableKeys,
+      ## it can only be added when the device is created and then will remain unchanged.
+      ## If a key is present in editableKeys but not keys, it can only be removed.
+      ## Must be alphanumeric, dashes and underscores are allowed.
+      editableKeys: []
+      ## e.g.:
+      ## - key1
     ## Apple provides a way to quickly set settings: For us we're interesting in the DNS settings.
     ## The API provides an endpoint to generate these config files using the parameters here:
     appleMobileConfig:
       ## A comma-separated string of the IP address to use for DOH.
       dohAddresses:
-      ## The identifier for the payload content. The payload content contains the dns settings. E.g. io.safesurfer.dnsSettings
-      payloadContentIdentifier:
       ## The host for DOH, e.g. doh.safesurfer.io
       dohHost:
       ## The description for the config (shows on the apple UI)
       description:
       ## The name of the config (shows on the apple UI)
       name:
-      ## The identifier for the whole payload, e.g. io.safesurfer.profile
-      payloadIdentifier:
+      ## Provision settings for third-party browsers so that they work by default,
+      ## as well as disabling workarounds.
+      ## Safari follows the system settings so already works by default.
+      extraSettings:
+        ## Brave settings to disable VPN, use system DOH settings, and disable Tor.
+        braveStable: false
+        braveBeta: false
+        braveNightly: false
+        ## Chrome settings to use system DOH settings.
+        chrome: false
+        ## Edge settings to use system DOH settings and disable new tab content.
+        edge: false
+        ## Vivaldi settings to use system DOH settings.
+        vivaldi: false
+        ## Chromium settings to use system DOH settings.
+        chromium: false
+        ## Firefox settings to use system DOH settings.
+        firefox: false
+        ## Yandex settings to use system DOH settings.
+        yandex: false
+      ## Identifiers for various parts of the payload.
+      identifiers:
+        ## For the whole payload.
+        payload:
+        ## For the DNSSettings.
+        dnsSettings:
+        ## For the Brave browser stable settings, if enabled.
+        braveStable:
+        ## For the Brave browser beta settings, if enabled.
+        braveBeta:
+        ## For the Brave browser nightly settings, if enabled.
+        braveNightly:
+        ## For the Chrome browser settings, if enabled.
+        chrome:
+        ## For the Edge browser settings, if enabled.
+        edge:
+        ## For the Vivaldi browser settings, if enabled.
+        vivaldi:
+        ## For the Chromium browser settings, if enabled.
+        chromium:
+        ## For the Firefox browser settings, if enabeld.
+        firefox:
+        ## For the Yandex browser settings, if enabled.
+        yandex:
 
   ## Notification configuration: Notifications are delivered via web push for certain events.
   notifications:
@@ -1998,7 +2088,7 @@ api:
   dailyCleanup:
     enabled: true
     ## Image to use
-    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.1.0
+    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.2.0
     ## The max amount of open/idle connections to use when connecting to the database.
     ## Setting these to 0 uses the default values, which are currently 2 and unlimited
     ## respectively but may change in the future.
@@ -2026,6 +2116,10 @@ api:
       notificationsLog: 1h
       ## Timeout for removing old screencasts. These are removed after 90 days.
       casts: 1h
+      ## Timeout for resetting the quota for nudity detections.
+      nudityDetections: 30m
+      ## Timeout for removing old location history. This is removed after 90 days.
+      locationHistory: 1h
     ## Resource for the container. Defaults are to have conservative limits but no requests
     ## to ensure the container can schedule.
     resources:
@@ -2046,7 +2140,7 @@ api:
     #       usage_insights_blocked_site_count: 'Sites Blocked'
     #       usage_insights_blocked_site_count_description: 'How many sites have been blocked over the time period.'
     #       usage_insights_general_group_name: 'General'
-    #       usage_unknown_category_name: 'General'
+    #       unknown_category_name: 'General'
     #       usage_unknown_category_description: "Sites that haven't been classified yet."
     #       notifications_initial_notification_title: 'Example Notification'
     #       security_alerts_adversary_simulation_title: 'Adversary Simulation'
@@ -2316,6 +2410,17 @@ api:
     #       - field: check
     #         members:
     #         - text: '(Check BRAND_NAME is still running)'
+    #       app_installed_notification:
+    #       - text: 'App "'
+    #       - field: app
+    #       - text: '" waiting for approval for '
+    #       - field: device
+    #       - text: '.'
+    #       app_installed_notification_multi:
+    #       - field: amount
+    #       - text: ' apps waiting for approval for '
+    #       - field: device
+    #       - text: '.'
 
 ## Configure components for domain categorization management and other admin tasks.
 categorizer:
@@ -2367,6 +2472,10 @@ categorizer:
     ## (which is not usually correct). Can parse headers that provide a comma-separated list of IP addresses, such
     ## as X-Forwarded-For. In this case, it will use the first value in the comma-separated list, corresponding to
     ## the most recent hop. Headers containing just a single value, e.g. X-Real-Ip can also be parsed.
+    ## Note that it is possible to make the admin app believe you are any source IP when requested from inside the cluster and using realIPHeader.
+    ## Although to take any malicious action they would also need an admin password, which would require compromising the control plane.
+    ## If this is a concern, you can use a [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) to ensure only
+    ## necessary namespaces/pods can connect to the pods in the Safe Surfer release's namespace.
     realIPHeader: X-Forwarded-For
     ## Configure login details for an admin access account. The admin account can't be deleted and its details are specified here.
     admin:
@@ -2808,7 +2917,7 @@ db:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## The current schema version. The argument is an image that runs migrations against the database.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.6.0
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.7.0
   ## Configure an external database connection, see above.
   external:
     ## Whether to use an external database. Either this or the in-cluster database must be enabled.
@@ -2986,6 +3095,13 @@ healthChecks:
   ## If you set health checks to run every second with "* * * * * *", the info level
   ## may be too granular for you.
   logLevel: info
+  ## The default value "ClusterFirst" can make health checks fail because it relies on
+  ## the in-cluster DNS resolution, which isn't always quick enough. By setting this to
+  ## `Default` by default, we use the quicker DNS of the host. You could also set this
+  ## to `None` and configure `dnsConfig` below to use a specific resolver or set records
+  ## directly.
+  dnsPolicy: Default
+  dnsConfig:
   ## The resources to allocate to the pod. It is pretty lightweight.
   resources:
     requests:
@@ -3204,6 +3320,28 @@ providers:
     #   secret: |
     #     accessKey:
     #     timeout: 10s
+  ## Details for an API providing nudity detection. Optional - used for double-verification of screencast
+  ## events which will not be necessary for most.
+  nuditydetection:
+    # Example for cloud vision (only supported platform currently)
+    # cloudVisionExample:
+    #   platform: googleCloudVision
+    #   secret: |
+    #     requireAdultLevel: 4
+    #     requireRacyLevel: 5
+    #     credentials: |-
+    #       {
+    #         "type": "service_account",
+    #         "project_id": "example-project-id-123",
+    #         "private_key_id": "example",
+    #         "private_key": "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----\n",
+    #         "client_email": "example@example-project-id-123.iam.gserviceaccount.com",
+    #         "client_id": "123",
+    #         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    #         "token_uri": "https://oauth2.googleapis.com/token",
+    #         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    #         "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/example%40example-project-id-123.iam.gserviceaccount.com"
+    #       }
 
 ## Configure the redis database. This is used for several things:
 ## - Tracking the assocation between categories and IP addresses, if `dns.ipsetd` is enabled.

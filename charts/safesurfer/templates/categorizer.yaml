@@ -172,7 +172,7 @@ spec:
           {{- end }}
 
           - name: APP_ALL_QUOTA_KEYS
-            value: '{{ join "," (keys .Values.api.quotas | uniq | sortAlpha) }}'
+            value: '{{ join "," (concat (keys .Values.api.quotas) (keys .Values.api.extraQuotas) | uniq | sortAlpha) }}'
 
           - name: APP_K8S_NAMESPACE
             value: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.categorizer.namespace) }}

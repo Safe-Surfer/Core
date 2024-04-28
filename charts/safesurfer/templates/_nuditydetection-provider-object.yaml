@@ -1,0 +1,10 @@
+{{- define "nudityDetectionProviderObject" }}
+{{- with index .Values.providers.nuditydetection .key }}
+{{- if eq .platform "googleCloudVision" }}
+googleCloudVision:
+{{- .secret | nindent 2 }}
+{{- else }}
+{{- fail "that nudity detection platform is not supported" }}
+{{- end }}
+{{- end }}
+{{- end }}

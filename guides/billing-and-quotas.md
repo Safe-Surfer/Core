@@ -543,7 +543,11 @@ After completing the checkout, your subscription screen should look something li
 
 ![](./img/dashboard-31.png)
 
-You can modify the addon, cancel, edit payment methods, etc. Note that since we have set `prorateOnUpgrade` and `invoiceImmediately` in the addon config, adding or upgrading the `Security Alerts` addon will result in a checkout appearing. However, this will not happen if the subscription is still in trial. To play around with this, you can end the trial for the subscription manually in chargebee:
+You can modify the addon, cancel, edit payment methods, etc. Note that since we have set `prorateOnUpgrade` and `invoiceImmediately` in the addon config, adding or upgrading the `Security Alerts` addon will result in a checkout appearing.
+
+Whether this occurs while the subscription is in the trial or future state is controlled by the `requireActive` parameter on the addon. If this is `true`, the trial will be ended, or the subscription started, as part of the checkout. If this is `false` (the default), the prorated charge will not be raised while the subscription is in the trial or future state.
+
+To play around with this, you can end the trial for the subscription manually in chargebee:
 
 ![](./img/chargebee-11.png)
 

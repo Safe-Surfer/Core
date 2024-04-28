@@ -1,5 +1,70 @@
 # Changelog
 
+## Next
+
+### Breaking changes
+- Many requests on the API that require user IP address information will now fail and return 500 if `api.realIPHeader` is not configured correctly. For more details, see the API section below.
+- The version 1 alert API endpoints have been removed. These have not been used for a long while and have been replaced by v2.
+- Rename `api.strings.usage_unknown_category_name` to `api.strings.unknown_category_name` to reflect the fact that the string constant may now also be returned in alerts for recently installed apps.
+- Alerts for blocked requests to categories that aren't displayed may now be returned. Before, alerts were not returned for categories that were not displayed.
+- `api.devices.appleMobileConfig.payloadContentIdentifier` and `api.devices.appleMobileConfig.payloadIdentifier` have been removed in favor of `api.devices.appleMobileConfig.identifiers.payload` and `api.devices.appleMobileConfig.identifiers.dnsSettings` respectively.
+- The `healthChecks` deployment now uses a `dnsPolicy` of `Default` by default, where before it was using `ClusterFirst`. This is only a breaking change if you were health-checking anything inside the cluster using kubernetes DNS names, regular DNS should work as expected given DNS on the nodes working.
+- Downloaded apple `.mobileconfig` files are now set to apply to the whole system, not just the current user.
+
+### Migration guide
+- If `api.enabled` is true, examine the logs of your API pods and ensure that the request logs show a valid source IP. If `api.realIPHeader` is not configured correctly, an IP from one of the [private ranges](https://en.wikipedia.org/wiki/Private_network) will be shown. If a private IP range is shown, configure `api.realIPHeader` to match a header set by your ingress. Requesting the root of the API will dump the headers that the API can see.
+- If you are overriding `api.strings.usage_unknown_category_name` in your own values, change this to `api.strings.unknown_category_name`.
+- Examine your category list to find categories with alerts enabled that are not displayed. Alerts for these categories may now be returned to customers. If you don't want this, you can turn alerts off for the category, or change the logging visibility to avoid logging any requests for the categories.
+- If you are overriding `api.devices.appleMobileConfig.payloadContentIdentifier` or `api.devices.appleMobileConfig.payloadIdentifier` in your values, change these to `api.devices.appleMobileConfig.identifiers.payload` and `api.devices.appleMobileConfig.identifiers.dnsSettings` respectively.
+- If you are using `healthChecks` to health-check DNS names inside the cluster, set `healthChecks.dnsPolicy` back to `ClusterFirst` in your values.
+- Run `helm repo update safesurfer` to get the latest chart version.
+- Finally, upgrade the chart deployment.
+
+### Non-breaking changes
+
+#### Chart
+- Add the `api.extraQuotas` field to define arbitrary quotas. This was possible previously, but required replacing the entire `api.quotas` object.
+
+#### DNS
+- Add `dns.dot.service.isGCPNEG` to easily provision a Google Cloud Network Endpoint Group for DOT.
+
+#### LMDB manager
+- Fix a bug where live updates could hang if there was a database connection issue as the container starts.
+- Add `dns.dns.sidecarContainers.lmdbManager.accountFullRebuildWindow` and `dns.dns.sidecarContainers.lmdbManager.domainFullRebuildWindow` to add some randomness around when full rebuilds occur. This helps to reduce database load.
+
+#### API
+- Add device metadata to associate arbitrary key/value data with devices. This feature is off by default, since you must define the valid keys in the `api.devices.metadata` object to enable it.
+- Support various extra settings provisioned via apple `.mobileconfig` files. These extra settings are off by default, but force browsers to use the DNS provisioned as part of the profile, so provide a better user experience. This can be configured in `api.devices.appleMobileConfig.extraSettings` and `api.devices.appleMobileConfig.identifiers`. To return these for a given request for a mobileconfig file, you must opt in by setting the `enable-extra-settings` parameter.
+- Fix a bug where the internal quota live-updates websocket could fail silently without returning an error.
+- Fix a bug where the estimate for changing addon quantity would not include other addons currently on the user's subscription in the next invoice.
+- Add third-party nudity detection providers. Currently this is only used for the screencast feature so is off by default.
+- Add location tracking API (off by default).
+- By default, change the `android` role to allow the app to set the app version, retreive its own metadata, and post its location.
+- Add a minimum priority setting to alert emails. By default, the alert email settings for newly created accounts now has the daily email configured to high priority as a minimum.
+- Add alerts for newly installed apps.
+- Add a setting for app approval. When this is on for a device, newly added apps will be blocked by default until an explicit decision is made.
+- Add an API in the new blocking endpoint group to toggle the above.
+- Add an API in the new blocking endpoint group to get the app blocking settings.
+- Add an API in the new blocking endpoint group to set the base category settings.
+- Improve alerts performance.
+- The following operations now require `api.realIPHeader` to be configured correctly to find the user's source IP, or they will fail and return 500: creating a user, signing in with a username/password, using remote authentication, adding a survey result, getting the user's source IP, setting the IPv6 address for a device, setting the IPv4 address for a device, and chargebee subscription operations that require the user's source IP. Source IP is required for estimating or creating a chargebee subscription, or getting a chargebee plan, when the full plan ID is not provided and the user's source IP is used to determine the real plan or plan price ID.
+- Improve request logging.
+
+#### Mailbot
+- Increase default memory limit.
+
+#### Health checks
+- Add `dnsPolicy` and `dnsConfig` fields to `healthChecks`. Using `ClusterFirst` DNS can result in false positive health check failures if the cluster's DNS setup can't handle the amount of requests the health checks require. The new default value, `Default`, uses the DNS of the nodes, which removes the overhead of matching all DNS names with in-cluster DNS.
+
+#### Admin App
+- Fix a bug where requesting the [domain categories](https://safesurfer.gitlab.io/admin-app-api-docs/#tag/domains/operation/getPublicSearch) API from inside the cluster would crash the requested admin app pod when `categorizer.adminApp.realIPHeader` was set, unless the `realIPHeader` header was set manually on the request.
+- Fix a bug in the situation where `categorizer.adminApp.authIpWhitelist` and `categorizer.adminApp.realIPHeader` were both set and requests were made to the admin app from inside the cluster. Previously, this would crash the requested admin app pod unless the `realIPHeader` header was set manually on the request to an allowed value.
+- Improve request logging.
+
+#### Reference dashboard
+- Set a user's timezone when their account is created or when they sign in. This avoids the dates being incorrect on alert emails.
+- When changing addon quantity with proration enabled, name prorated charges "upfront charges" instead of prorated charges.
+
 ## 9.0.1
 
 ### Non-breaking changes
