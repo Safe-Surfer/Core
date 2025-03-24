@@ -1,0 +1,7 @@
+{{- if .Values.monitoring.enabled }}
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.lmdbFeed.default.enabled }}
+{{ include "lmdbFeedDashboard" (dict "name" (include "name" (dict "Release" .Release "name" "lmdb-feed-default" "nameOverride" .Values.dns.lmdbFeed.default.nameOverride)) "Release" .Release "Values" .Values "Chart" .Chart) }}
+{{- end }}
+{{- end }}
+{{- end }}

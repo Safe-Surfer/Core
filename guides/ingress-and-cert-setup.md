@@ -87,7 +87,7 @@ Various parts of the Safe Surfer deployment may require you to enable TLS. There
 - Supply the name of a secret containing the `tls.crt` and `tls.key` files. You can use this to set up a letsencrypt cert using [DNS01 validation](https://cert-manager.io/docs/configuration/acme/dns01/) with cert-manager.
 
 ### Installing cert-manager
-The full instructions are [here](https://cert-manager.io/docs/installation/), but in most cases all you need is `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml`.
+The full instructions are [here](https://cert-manager.io/docs/installation/), but in most cases all you need is `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml`.
 
 This command will install cert manager to the `cert-manager` namespace. Run `kubectl -n cert-manager get pods` until you see a result like the following:
 

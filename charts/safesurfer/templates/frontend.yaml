@@ -77,9 +77,9 @@ spec:
           value: https://{{ .Values.categorizer.adminApp.ingress.host }}
         {{- end }}
         - name: APP_DOT_HOST
-          value: {{ .Values.dns.dot.host }}
+          value: {{ ( split `,` .Values.dns.dot.host)._0 }}
         - name: APP_DOH_URL
-          value: https://{{ .Values.dns.doh.host }}/
+          value: https://{{ ( split `,` .Values.dns.doh.host)._0 }}/
         - name: APP_CHARGEBEE_SITE
           value: {{ .Values.api.accounts.chargebee.site }}
         - name: APP_CHARGEBEE_DEFAULT_PLAN

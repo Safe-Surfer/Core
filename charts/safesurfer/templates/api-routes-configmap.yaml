@@ -86,4 +86,6 @@ data:
     {{- if .Values.api.rolesConfig }}
       {{- toYaml .Values.api.rolesConfig | nindent 6 }}
     {{- end }}
+    mobileConfig:
+      {{- toYaml .Values.api.devices.appleMobileConfig | nindent 6 }}
 {{- end }}

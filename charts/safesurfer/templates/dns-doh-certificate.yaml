@@ -3,6 +3,10 @@
 #
 {{- if .Values.dns.enabled }}
 {{- if .Values.dns.doh.enabled }}
-{{ include "cert" (dict "cert" .Values.dns.doh.tls "noHttpSupport" true "overrideLegacyName" "letsencrypt-prod-doh" "Release" .Release "name" (include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.doh.host) "Values" .Values) }}
+{{ $release := .Release }}
+{{ $values := .Values }}
+{{- range $idx, $cert := .Values.dns.doh.tls }}
+{{ include "cert" (dict "cert" $cert "noHttpSupport" true "Release" $release "name" (include "name" (dict "Release" $release "name" (printf "doh-%s" $idx) "nameOverride" $values.dns.doh.nameOverride)) "namespace" $values.dns.namespace "Values" $values) }}
+{{- end }}
 {{- end }}
 {{- end }}

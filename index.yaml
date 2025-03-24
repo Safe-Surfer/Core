@@ -2,8 +2,18 @@ apiVersion: v1
 entries:
   safesurfer:
   - apiVersion: v2
+    appVersion: 5.0.0
+    created: "2025-03-24T20:54:27.2632722+13:00"
+    description: Deploy Safe Surfer.
+    digest: fbcecf19185cf477f76d201c4618fd3b939257317a054f997f6d3bb477d740ef
+    name: safesurfer
+    type: application
+    urls:
+    - https://safe-surfer.github.io/Core/safesurfer-11.0.0.tgz
+    version: 11.0.0
+  - apiVersion: v2
     appVersion: 4.1.0
-    created: "2024-04-29T10:57:09.5758994+12:00"
+    created: "2025-03-24T20:54:27.2518029+13:00"
     description: Deploy Safe Surfer.
     digest: 6cb2fe5e9003264a2b004da7cf7d89d2663da38bd924fd4fab4ae36a960fbdf3
     name: safesurfer
@@ -13,7 +23,7 @@ entries:
     version: 10.0.0
   - apiVersion: v2
     appVersion: 4.0.1
-    created: "2024-04-29T10:57:09.6144822+12:00"
+    created: "2025-03-24T20:54:27.3379706+13:00"
     description: Deploy Safe Surfer.
     digest: 037d2ed32d119674059880abd49906fd5abf0602ad6dc4c314083e218ad78149
     name: safesurfer
@@ -23,7 +33,7 @@ entries:
     version: 9.0.1
   - apiVersion: v2
     appVersion: 4.0.0
-    created: "2024-04-29T10:57:09.6039692+12:00"
+    created: "2025-03-24T20:54:27.319821+13:00"
     description: Deploy Safe Surfer.
     digest: 443051bcbade0683d46dcca30ea3f2ca70c51fe62f41f6a4f2c8e649a60454d6
     name: safesurfer
@@ -33,7 +43,7 @@ entries:
     version: 9.0.0
   - apiVersion: v2
     appVersion: 3.0.0
-    created: "2024-04-29T10:57:09.59482+12:00"
+    created: "2025-03-24T20:54:27.298317+13:00"
     description: Deploy Safe Surfer.
     digest: dd2b728c545e3272643cb3ab6ba4a80492c04836cf23abbc325f20ea038770ec
     name: safesurfer
@@ -43,7 +53,7 @@ entries:
     version: 8.0.0
   - apiVersion: v2
     appVersion: 2.6.0
-    created: "2024-04-29T10:57:09.5856841+12:00"
+    created: "2025-03-24T20:54:27.2788995+13:00"
     description: Deploy Safe Surfer.
     digest: 73a8325982c5b7ce47e34f5ac0e887cf83e6d7e079d883ed8a214980c2b11ccd
     name: safesurfer
@@ -51,4 +61,4 @@ entries:
     urls:
     - https://safe-surfer.github.io/Core/safesurfer-7.3.0.tgz
     version: 7.3.0
-generated: "2024-04-29T10:57:09.5648146+12:00"
+generated: "2025-03-24T20:54:27.2214058+13:00"

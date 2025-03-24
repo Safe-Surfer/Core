@@ -1,0 +1,8 @@
+{{- if .Values.dns.enabled }}
+{{- $values := .Values }}
+{{- $release := .Release }}
+{{- $chart := .Chart }}
+{{- range $spec := .Values.dns.lmdbFeed.extraInstances }}
+{{ include "lmdbFeedSpec" (dict "Name" (required "elements of dns.lmdbFeed.extraInstances must specify the `name` field" $spec.name) "Spec" $spec "Values" $values "Release" $release "Chart" $chart) }}
+{{- end }}
+{{- end }}

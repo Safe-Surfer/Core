@@ -1,0 +1,315 @@
+{{ define "lmdbFeedSpec" }}
+{{- if .Spec.enabled }}
+# The custom storage class, if enabled.
+{{- if and .Spec.persistence.enabled .Spec.persistence.storageClass }}
+---
+{{ toYaml .Spec.persistence.enabled .Spec.persistence.storageClass }}
+{{- end}}
+# The PVC, if enabled.
+{{- if .Spec.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Spec.persistence.size }}
+  {{- if .Spec.persistence.storageClassName }}
+  storageClassName: {{ .Spec.persistence.storageClassName }}
+  {{- else if .Spec.persistence.storageClass.metadata.name }}
+  storageClassName: {{ .Spec.persistence.storageClass.metadata.name }}
+  {{- end }}
+{{- end }}
+---
+# The client config secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+type: Opaque
+data:
+  client.yaml: {{ .Spec.clientConfig | b64enc | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+spec:
+  replicas: 1
+  serviceName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        #
+        # Ensure rolling deployments when mounted secrets change.
+        #
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        checksum/client-config: {{ .Spec.clientConfig | sha256sum }}
+    spec:
+      securityContext:
+        fsGroup: 250
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      volumes:
+      {{- if .Spec.persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      {{- end }}
+      - name: tmp
+        emptyDir: {}
+      - name: config
+        secret:
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+        image: {{ .Spec.image }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        {{- if .Spec.persistence.enabled }}
+        - name: data
+          mountPath: /data/lmdb
+        {{- end }}
+        - name: tmp
+          mountPath: /tmp
+        ports:
+        - name: lmdb-feed
+          containerPort: {{ .Spec.port }}
+          protocol: TCP
+        args:
+        - feed
+        env:
+          {{ include "loggingEnvs" (dict "level" .Spec.logLevel) | indent 10 }}
+          {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_PERSISTENT
+            value: {{ .Spec.persistence.enabled | quote }}
+          - name: APP_PG_MAX_IDLE_CONNS
+            value: {{ .Spec.maxIdleConns | int | quote }}
+          - name: APP_PG_MAX_OPEN_CONNS
+            value: {{ .Spec.maxOpenConns | int | quote }}
+          - name: APP_CLIENT_CONFIG_FILE
+            value: '/config/client.yaml'
+          - name: APP_LMDB_FEED_PORT
+            value: {{ .Spec.port | int | quote }}
+          {{- if .Spec.persistence.enabled }}
+          - name: APP_LMDB_FEED_BASE_DIR
+            value: /data/lmdb
+          {{- else }}
+          - name: APP_LMDB_FEED_BASE_DIR
+            value: /tmp/lmdb
+          {{- end }}
+          - name: APP_LMDB_FEED_BUFFER_SIZE
+            value: {{ .Spec.batchHistoryLength | int | quote }}
+          - name: APP_LMDB_FEED_LMDB_MAP_SIZE
+            value: {{ .Spec.mapSize }}
+          - name: APP_LMDB_FEED_MAX_WAITING_BATCHES
+            value: {{ .Spec.batchBufferSize | int | quote }}
+          - name: APP_LMDB_FEED_MAX_BATCH_DURATION
+            value: {{ .Spec.maxBatchDuration }}
+          - name: APP_LMDB_FEED_MAX_SEND_SIZE
+            value: {{ .Spec.maxBatchSize | quote }}
+          - name: APP_STREAM_DOMAINS
+            value: {{ .Spec.streamDomains | quote }}
+          - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
+            value: {{ .Spec.domainLiveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
+            value: {{ .Spec.domainLiveUpdateMaxDelay | quote }}
+          - name: APP_DOMAIN_FULL_REBUILD_INTERVAL
+            value: {{ .Spec.domainFullRebuildInterval | quote }}
+          - name: APP_DOMAIN_FULL_REBUILD_WINDOW
+            value: {{ .Spec.domainFullRebuildWindow | quote }}
+          - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
+            value: {{ .Spec.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
+            value: {{ .Spec.categoryOptionLiveUpdateMaxDelay | quote }}
+          - name: APP_CATEGORY_OPTIONS_FULL_REBUILD_INTERVAL
+            value: {{ .Spec.categoryOptionFullRebuildInterval | quote }}
+          - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
+            value: {{ .Spec.categoryLiveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
+            value: {{ .Spec.categoryLiveUpdateMaxDelay | quote }}
+          - name: APP_CATEGORY_FULL_REBUILD_INTERVAL
+            value: {{ .Spec.categoryFullRebuildInterval | quote }}
+          - name: APP_ACCOUNT_FULL_REBUILD_INTERVAL
+            value: {{ .Spec.accountFullRebuildInterval | quote }}
+          - name: APP_ACCOUNT_FULL_REBUILD_WINDOW
+            value: {{ .Spec.accountFullRebuildWindow | quote }}
+          - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
+            value: {{ .Spec.accountLiveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
+            value: {{ .Spec.accountLiveUpdateMaxDelay | quote }}
+          - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
+            value: {{ .Spec.accountPlanAheadDuration | quote }}
+          - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+            value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+          - name: APP_ACCOUNT_PG_ITER_SIZE
+            value: {{ .Spec.accountPgIterSize | int | quote }}
+          - name: APP_DOMAIN_PG_ITER_SIZE
+            value: {{ .Spec.domainPgIterSize | int | quote }}
+          - name: APP_ACCOUNT_SEGMENTATION_ENABLED
+            value: {{ .Spec.accountSegmentation.enabled | quote }}
+          - name: APP_MAX_LISTENER_RETAIN_DURATION
+            value: {{ .Spec.maxListenerRetainDuration }}
+          {{- if .Spec.accountSegmentation.enabled }}
+          - name: APP_ACCOUNT_SEGMENTATION_SIZE
+            value: {{ .Spec.accountSegmentation.size | int | quote }}
+          {{- end }}
+          {{- with .Values.dns.extraEnv }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 2
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Spec.port }}
+        livenessProbe:
+          failureThreshold: 2
+          initialDelaySeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Spec.port }}
+        resources:
+          {{- toYaml .Spec.resources | nindent 10 }}
+      {{- with .Values.dns.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dns.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+# The service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- if .Spec.service.isGCPNEG }}
+    cloud.google.com/neg: '{"exposed_ports": {"{{ .Spec.service.port }}":{}}}'
+    {{- end }}
+    {{- with .Spec.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "safesurfer-dns.labels" . | nindent 4 }}
+{{- if .Values.dns.labels }}
+{{- with .Values.dns.labels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+spec:
+  ports:
+  - name: lmdb-feed
+    port: {{ .Spec.service.port }}
+    protocol: TCP
+    targetPort: {{ .Spec.port }}
+  type: {{ .Spec.service.type }}
+  {{- if (or (eq .Spec.service.type "LoadBalancer") (eq .Spec.service.type "NodePort")) }}
+  externalTrafficPolicy: Local
+  {{- if .Spec.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Spec.service.loadBalancerIP }}
+  {{- end }}
+  {{- with .Spec.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{ toYaml . | nindent 2 }}
+  {{- end }}
+  sessionAffinity: ClientIP
+  {{- end }}
+  externalIPs:
+{{- if .Spec.service.externalIPs }}
+{{- with .Spec.service.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+
+{{ if .Spec.ingress.enabled }}
+---
+#
+# Ingress.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    {{ if .Spec.ingress.rateLimiting.enabled }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Spec.ingress.rateLimiting.rpm | quote }}
+    {{ end }}
+    {{- if .Spec.ingress.whitelistSourceRange }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Spec.ingress.whitelistSourceRange | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Spec.ingress.class }}
+  tls:
+  - hosts:
+    - {{ .Spec.ingress.host }}
+    {{- if .Spec.ingress.tls.secretName }}
+    secretName: {{ .Spec.ingress.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}-cert
+    {{- end }}
+  rules:
+  - host: {{ .Spec.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+            port:
+              number: {{ .Spec.service.port }}
+---
+#
+# Cert and issuer
+#
+{{ include "cert" (dict "cert" .Spec.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Spec.ingress.host) "Values" .Values) }}
+{{- end }}
+{{- end }}
+{{- end }}

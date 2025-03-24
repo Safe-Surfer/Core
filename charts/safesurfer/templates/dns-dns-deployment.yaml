@@ -27,6 +27,7 @@ spec:
   template:
     metadata:
       labels:
+        modelVersion: '1'
         app: {{ include "dnsContainerAndAppName" . }}
         {{- include "safesurfer-dns.selectorLabels" . | nindent 8 }}
 {{- if .Values.dns.labels }}
@@ -130,6 +131,10 @@ spec:
               value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
             - name: PROTO_PLAIN_HOST
               value: {{ .Values.protocolchecker.domains.plain }}.{{ .Values.protocolchecker.domains.base }}
+            - name: SERVER_ID_HOST
+              value: {{ .Values.protocolchecker.domains.id }}.{{ .Values.protocolchecker.domains.base }}
+            - name: TOKEN_MATCH_DOMAIN
+              value: {{ .Values.protocolchecker.domains.tokenMatch }}.{{ .Values.protocolchecker.domains.base }}
             - name: ACCOUNT_QUERY_DOMAIN
               value: {{ .Values.dns.dns.debugging.accountQueryDomain }}
             - name: PROTO_QUERY_DOMAIN
@@ -246,77 +251,135 @@ spec:
           image: {{ .Values.dns.dns.sidecarContainers.lmdbManager.image }}
           securityContext:
             {{- toYaml .Values.dns.dns.podSecurityContext | nindent 12 }}
+          {{- if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.enabled }}
+          ports:
+          - name: peering
+            containerPort: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.port }}
+            protocol: TCP
+          {{- end }}
           env:
+            {{ include "loggingEnvs" (dict "level" .Values.dns.dns.sidecarContainers.lmdbManager.logLevel) | indent 12 }}
             - name: TZ
               valueFrom:
                 configMapKeyRef:
                   name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
                   key: timezone
-            - name: APP_ACCOUNT_FULL_REBUILD_INTERVAL
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountFullRebuildInterval | quote }}
-            - name: APP_ACCOUNT_FULL_REBUILD_WINDOW
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountFullRebuildWindow | quote }}
-            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxDelay | quote }}
-            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPlanAheadDuration | quote }}
-            - name: APP_CATEGORY_FULL_REBUILD_INTERVAL
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.categoryFullRebuildInterval | quote }}
-            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxDelay | quote }}
-            - name: APP_CATEGORY_OPTIONS_FULL_REBUILD_INTERVAL
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.categoryOptionFullRebuildInterval | quote }}
-            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxDelay | quote }}
-            - name: APP_DOMAIN_FULL_REBUILD_INTERVAL
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.domainFullRebuildInterval | quote }}
-            - name: APP_DOMAIN_FULL_REBUILD_WINDOW
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.domainFullRebuildWindow | quote }}
-            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxDelay | quote }}
-            - name: APP_STREAM_DOMAINS
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.streamDomains | quote }}
             - name: APP_LMDB_MANAGER_MAP_SIZE
               value: {{ .Values.dns.dns.initContainers.initLmdb.mapSize | quote }}
             - name: APP_LMDB_PATH
               value: /lmdb
-            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
-              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
-            - name: APP_ACCOUNT_PG_ITER_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPgIterSize | int | quote }}
-            - name: APP_DOMAIN_PG_ITER_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainPgIterSize | int | quote }}
-            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.enabled | quote }}
-            {{- if .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.enabled }}
-            - name: APP_ACCOUNT_SEGMENTATION_SIZE
-              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.accountSegmentation.size | int | quote }}
-            {{- end }}
-            - name: APP_PG_CONN_TIMEOUT
-              value: {{ .Values.dns.dns.initContainers.initLmdb.pgConnTimeout | quote }}
-            {{ include "loggingEnvs" (dict "level" .Values.dns.dns.sidecarContainers.lmdbManager.logLevel) | indent 12 }}
-            #
-            # DB Connection
-            #
-            - name: APP_PG_MAX_IDLE_CONNS
-              value: {{ .Values.dns.dns.initContainers.initLmdb.maxIdleConns | int | quote }}
-            - name: APP_PG_MAX_OPEN_CONNS
-              value: {{ .Values.dns.dns.initContainers.initLmdb.maxOpenConns | int | quote }}
-            {{ include "dbEnvs" . | indent 12 }}
           {{- with .Values.dns.dns.extraEnv }}
               {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with .Values.dns.extraEnv }}
               {{- toYaml . | nindent 12 }}
           {{- end }}
+            - name: APP_LMDB_MANAGER_POSTGRES_BACKEND
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.enabled | quote }}
+            {{- if and .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.enabled .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.enabled }}
+            {{ fail "Cannot use both postgres and lmdbFeed backend" }}
+            {{- else if .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.enabled }}
+            - name: APP_ACCOUNT_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.accountFullRebuildInterval | quote }}
+            - name: APP_ACCOUNT_FULL_REBUILD_WINDOW
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.accountFullRebuildWindow | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountLiveUpdateMaxDelay | quote }}
+            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountPlanAheadDuration | quote }}
+            - name: APP_CATEGORY_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.categoryFullRebuildInterval | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryLiveUpdateMaxDelay | quote }}
+            - name: APP_CATEGORY_OPTIONS_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.categoryOptionFullRebuildInterval | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryOptionLiveUpdateMaxDelay | quote }}
+            - name: APP_DOMAIN_FULL_REBUILD_INTERVAL
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.domainFullRebuildInterval | quote }}
+            - name: APP_DOMAIN_FULL_REBUILD_WINDOW
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.domainFullRebuildWindow | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainLiveUpdateMaxDelay | quote }}
+            - name: APP_STREAM_DOMAINS
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.streamDomains | quote }}
+            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+            - name: APP_ACCOUNT_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountPgIterSize | int | quote }}
+            - name: APP_DOMAIN_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainPgIterSize | int | quote }}
+            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.accountSegmentation.enabled | quote }}
+            {{- if .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.accountSegmentation.enabled }}
+            - name: APP_ACCOUNT_SEGMENTATION_SIZE
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.postgres.accountSegmentation.size | int | quote }}
+            {{- end }}
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.maxOpenConns | int | quote }}
+            {{ include "dbEnvs" . | indent 12 }}
+            {{- else if .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.enabled }}
+            - name: APP_LMDB_MANAGER_MAX_RECV_SIZE
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.maxReceiveSize | quote }}
+            - name: APP_LMDB_FEED_MESSAGE_TIMEOUT
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.messageTimeout | quote }}
+            {{- if and .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.enabled .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.enabled }}
+            {{ fail "Cannot use both internal and external lmdbFeed backend" }}
+            {{- else if .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.enabled }}
+            # Use internal source
+            - name: APP_LMDB_FEED_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "lmdb-feed-default" "nameOverride" .Values.dns.lmdbFeed.default.nameOverride) }}:80
+            - name: APP_LMDB_FEED_USERNAME
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.username }}
+            - name: APP_LMDB_FEED_COMPRESS
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.compress | quote }}
+            {{- $values := .Values }}
+            {{- range $key, $val := fromYaml .Values.dns.lmdbFeed.default.clientConfig }}
+            {{- if eq $key $values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.username }}
+            - name: APP_LMDB_FEED_PASSWORD
+              value: {{ $val.password }}
+            {{- end }}
+            {{- end }}
+            - name: APP_LMDB_FEED_INSECURE
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.internal.insecure | quote }}
+            {{- else if .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.enabled }}
+            # Use external source
+            - name: APP_LMDB_FEED_HOST
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.host }}
+            - name: APP_LMDB_FEED_USERNAME
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.username }}
+            - name: APP_LMDB_FEED_COMPRESS
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.compress | quote }}
+            - name: APP_LMDB_FEED_PASSWORD
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.password }}
+            - name: APP_LMDB_FEED_INSECURE
+              value: {{ .Values.dns.dns.sidecarContainers.lmdbManager.backend.lmdbFeed.external.insecure | quote }}
+            {{- else }}
+            {{ fail "Must use either internal or external lmdbFeed backend" }}
+            {{- end }}
+            - name: APP_LMDB_NEIGHBOUR
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.enabled | quote }}
+            {{- if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.enabled }}
+            - name: APP_LMDB_FEED_PORT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.port | int | quote }}
+            - name: APP_LMDB_FEED_MAX_BATCH_DURATION
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.maxBatchDuration | quote }}
+            - name: APP_LMDB_FEED_MAX_SEND_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.maxBatchSize | quote }}
+            {{- end }}
+            {{- else }}
+            {{ fail "Must use either postgres or lmdbFeed backend" }}
+            {{- end }}
           args:
           - live
           volumeMounts:
@@ -459,58 +522,128 @@ spec:
                 configMapKeyRef:
                   name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
                   key: timezone
-            - name: APP_STREAM_DOMAINS
-              value: {{ .Values.dns.dns.initContainers.initLmdb.streamDomains | quote }}
-            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainLiveUpdateMaxDelay | quote }}
-            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryOptionLiveUpdateMaxDelay | quote }}
-            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.categoryLiveUpdateMaxDelay | quote }}
-            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxBatchSize | int | quote }}
-            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountLiveUpdateMaxDelay | quote }}
-            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPlanAheadDuration | quote }}
             - name: APP_LMDB_MANAGER_MAP_SIZE
               value: {{ .Values.dns.dns.initContainers.initLmdb.mapSize | quote }}
             - name: APP_LMDB_PATH
               value: /lmdb
-            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
-              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
-            - name: APP_ACCOUNT_PG_ITER_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountPgIterSize | int | quote }}
-            - name: APP_DOMAIN_PG_ITER_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.domainPgIterSize | int | quote }}
-            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountSegmentation.enabled | quote }}
-            {{- if .Values.dns.dns.initContainers.initLmdb.accountSegmentation.enabled }}
-            - name: APP_ACCOUNT_SEGMENTATION_SIZE
-              value: {{ .Values.dns.dns.initContainers.initLmdb.accountSegmentation.size | int | quote }}
-            {{- end }}
-            - name: APP_PG_CONN_TIMEOUT
-              value: {{ .Values.dns.dns.initContainers.initLmdb.pgConnTimeout | quote }}
-            #
-            # DB Connection
-            #
-            - name: APP_PG_MAX_IDLE_CONNS
-              value: {{ .Values.dns.dns.initContainers.initLmdb.maxIdleConns | int | quote }}
-            - name: APP_PG_MAX_OPEN_CONNS
-              value: {{ .Values.dns.dns.initContainers.initLmdb.maxOpenConns | int | quote }}
-            {{- include "dbEnvs" . | nindent 12 }}
             {{- include "loggingEnvs" (dict "level" .Values.dns.dns.initContainers.initLmdb.logLevel) | nindent 12 }}
             {{- with .Values.dns.dns.initContainers.initLmdb.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.dns.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: APP_LMDB_MANAGER_POSTGRES_BACKEND
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.enabled | quote }}
+            {{- if and .Values.dns.dns.initContainers.initLmdb.backend.postgres.enabled .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.enabled }}
+            {{ fail "Cannot use multiple backends for LMDB" }}
+            {{- else if .Values.dns.dns.initContainers.initLmdb.backend.postgres.enabled }}
+            - name: APP_STREAM_DOMAINS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.streamDomains | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryOptionLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_OPTIONS_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryOptionLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_CATEGORY_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.categoryLiveUpdateMaxDelay | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_BATCH_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountLiveUpdateMaxBatchSize | int | quote }}
+            - name: APP_MAX_ACCOUNT_LIVE_UPDATE_DELAY
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountLiveUpdateMaxDelay | quote }}
+            - name: APP_ACCOUNT_PLAN_AHEAD_DURATION
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountPlanAheadDuration | quote }}
+            - name: APP_BLOCK_PAGE_ENABLED_DEFAULT
+              value: {{ .Values.blockpage.enabledForUsersByDefault | quote }}
+            - name: APP_ACCOUNT_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountPgIterSize | int | quote }}
+            - name: APP_DOMAIN_PG_ITER_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.domainPgIterSize | int | quote }}
+            - name: APP_ACCOUNT_SEGMENTATION_ENABLED
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountSegmentation.enabled | quote }}
+            {{- if .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountSegmentation.enabled }}
+            - name: APP_ACCOUNT_SEGMENTATION_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.accountSegmentation.size | int | quote }}
+            {{- end }}
+            - name: APP_PG_MAX_IDLE_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.maxIdleConns | int | quote }}
+            - name: APP_PG_MAX_OPEN_CONNS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.postgres.maxOpenConns | int | quote }}
+            {{- include "dbEnvs" . | nindent 12 }}
+            {{- else if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.enabled }}
+            - name: APP_NEIGHBOUR_INIT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.enabled | quote }}
+            - name: APP_LMDB_MANAGER_MAX_RECV_SIZE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.maxReceiveSize | quote }}
+            - name: APP_LMDB_FEED_MESSAGE_TIMEOUT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.messageTimeout | quote }}
+            {{- if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.enabled }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_MESSAGE_TIMEOUT
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.messageTimeout | quote }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_MAX_TRIES
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.maxTries | int | quote }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_COMPRESS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.peering.compress | quote }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "init-lmdb" "nameOverride" .Values.dns.dns.initContainers.initLmdb.nameOverride) }}-peering:443
+            {{- if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.enabled }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_USERNAME
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.username }}
+            {{- $values := .Values }}
+            {{- range $key, $val := fromYaml .Values.dns.lmdbFeed.default.clientConfig }}
+            {{- if eq $key $values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.username }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_PASSWORD
+              value: {{ $val.password }}
+            {{- end }}
+            {{- end }}
+            {{- else if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.enabled }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_USERNAME
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.username }}
+            - name: APP_LMDB_FEED_NEIGHBOUR_PASSWORD
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.password }}
+            {{- end }}
+            {{- end }}
+            {{- if and .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.enabled .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.enabled }}
+            {{ fail "Cannot use both internal and external lmdbFeed backend" }}
+            {{- else if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.enabled }}
+            # Use internal source
+            - name: APP_LMDB_FEED_HOST
+              value: {{ include "name" (dict "Release" .Release "name" "lmdb-feed-default" "nameOverride" .Values.dns.lmdbFeed.default.nameOverride) }}:80
+            - name: APP_LMDB_FEED_USERNAME
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.username }}
+            - name: APP_LMDB_FEED_COMPRESS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.compress | quote }}
+            {{- $values := .Values }}
+            {{- range $key, $val := fromYaml .Values.dns.lmdbFeed.default.clientConfig }}
+            {{- if eq $key $values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.username }}
+            - name: APP_LMDB_FEED_PASSWORD
+              value: {{ $val.password }}
+            {{- end }}
+            {{- end }}
+            - name: APP_LMDB_FEED_INSECURE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.internal.insecure | quote }}
+            {{- else if .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.enabled }}
+            # Use external source
+            - name: APP_LMDB_FEED_HOST
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.host }}
+            - name: APP_LMDB_FEED_USERNAME
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.username }}
+            - name: APP_LMDB_FEED_COMPRESS
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.compress | quote }}
+            - name: APP_LMDB_FEED_PASSWORD
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.password }}
+            - name: APP_LMDB_FEED_INSECURE
+              value: {{ .Values.dns.dns.initContainers.initLmdb.backend.lmdbFeed.external.insecure | quote }}
+            {{- else }}
+            {{ fail "Must use either internal or external lmdbFeed backend" }}
+            {{- end }}
+            {{- else }}
+            {{ fail "Must specify a backend for LMDB" }}
             {{- end }}
           args:
             - init
@@ -552,26 +685,26 @@ spec:
           configMap:
             name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
         {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar }}
-        - name: doh-certs
+        {{- range $idx, $cert := .Values.dns.doh.tls }}
+        - name: doh-certs-{{ $idx }}
           secret:
-            {{- if .Values.dns.doh.tls.secretName }}
-            secretName: {{ .Values.dns.doh.tls.secretName }}
-            {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
-            secretName: letsencrypt-prod-doh
+            {{- if $cert.secretName }}
+            secretName: {{ $cert.secretName }}
             {{- else }}
-            secretName: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}-cert
+            secretName: {{ include "name" (dict "Release" .Release "name" "doh" "nameOverride" .Values.dns.doh.nameOverride) }}-{{ $idx }}-cert
             {{- end }}
         {{- end }}
+        {{- end }}
         {{- if and .Values.dns.dot.enabled .Values.dns.dot.sidecar }}
-        - name: dot-certs
+        {{- range $idx, $cert := .Values.dns.dot.tls }}
+        - name: dot-certs-{{ $idx }}
           secret:
-            {{- if .Values.dns.dot.tls.secretName }}
-            secretName: {{ .Values.dns.dot.tls.secretName }}
-            {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
-            secretName: letsencrypt-prod-dot
+            {{- if $cert.secretName }}
+            secretName: {{ $cert.secretName }}
             {{- else }}
-            secretName: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}-cert
+            secretName: {{ include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride) }}-{{ $idx }}-cert
             {{- end }}
+        {{- end }}
         {{- end }}
       {{- with .Values.dns.nodeSelector }}
       nodeSelector:

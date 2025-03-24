@@ -249,7 +249,10 @@ Now hit `Add`. You should see a result like the following:
 Now that we have some domains, we're ready to deploy the DNS and see what it does.
 
 ## Deploying the DNS
-There are two ways of deploying the DNS: on kubernetes, and on individual servers using the `ss-config` tool. You can complete one or both of the sections below to get an idea.
+There are two ways of deploying the DNS: on kubernetes, and on individual servers using the `ss-config` tool. You can complete one or both of the sections below to get an idea. There are also two ways of connecting the DNS servers to postgres to load their local databases:
+- Direct postgres connection.
+- LMDB feed event source.
+Either can be used with either deployment method, and will be discussed more below.
 
 ### K8s DNS
 Unfortunately, it isn't possible to create a load balancer with both UDP and TCP using the same IP on kubernetes. This means you can't host plain DNS on kubernetes using a simple service. However, it is possible to convert each kubernetes node into its own DNS server using host networking. Later on, you can host Plain DNS, DOH, and DOT on the same IP using this approach. Add the following to your `values.yaml`:
@@ -261,11 +264,6 @@ dns:
     enabled: true
     hostNetwork: true
     replicas: 1
-    debugging:
-      accountQueryDomain: account.safesurfer
-      protoQueryDomain: proto.safesurfer
-      domainLookupDomain: domain.safesurfer
-      explainDomain: explain.safesurfer
     # Tone resources down for testing
     resources:
       requests:
@@ -343,13 +341,71 @@ dns:
     effect: NoSchedule
 ```
 
+#### Switching to LMDB feed
+LMDB feed is an event source that the DNS containers can connect to instead of a direct postgres connection. This has several benefits:
+- Reduced overhead on each DNS instance, especially with large amounts of customers and/or domains.
+- Can scale up and down during database downtime, for example in the case of a multi-faceted DDOS attack.
+- Faster initialization phase.
+- Reduced load on postgres, and theoretically infinite scaling, whereas postgres is limited by the amount of connections.
+- Improved security if deploying DNS servers outside of the kubernetes cluster containing the rest of the deployment.
+
+To enable LMDB feed, add the following to the `values.yaml`:
+
+```yaml
+dns:
+  lmdbFeed:
+    default:
+      enabled: true
+      clientConfig: |-
+        dns:
+          password: generate-a-lmdb-feed-password
+```
+
+Then also modify the DNS containers to connect to LMDB feed:
+
+```yaml
+dns:
+  dns:
+    initContainers:
+      initLmdb:
+        backend:
+          lmdbFeed:
+            enabled: true
+            internal:
+              username: dns
+          postgres:
+            enabled: false
+    sidecarContainers:
+      lmdbManager:
+        backend:
+          lmdbFeed:
+            enabled: true
+            internal:
+              username: dns
+          postgres:
+            enabled: false
+```
+
+Then upgrade the deployment.
+
+To improve the availability of updates, you can also enable persistence. This allows LMDB feed to pick up where it left off when restarted. Otherwise, it has to fully rebuild when started:
+
+```yaml
+dns:
+  lmdbFeed:
+    default:
+      persistence:
+        enabled: true
+        storageClassName: default
+```
+
 ### Server DNS
-The DNS can run on any linux OS supporting systemd and docker. It only requires a database connection to the postgres database used by the rest of deployment. Internet access through the DNS does not depend on the postgres database being up - this only affects whether users or admins can change settings. The `ss-config` tool can template configuration files or a [cloud-init](https://cloud-init.io/) file to install Safe Surfer DNS on any operating system. It takes input in the same `values.yaml` format as the helm chart, but does not support all the parameters, for example autoscaling must be handled differently for server deployments.
+The DNS can run on any linux OS supporting systemd and docker. The `ss-config` tool can template configuration files or a [cloud-init](https://cloud-init.io/) file to install Safe Surfer DNS on any operating system. It takes input in the same `values.yaml` format as the helm chart, but does not support all the parameters, for example autoscaling must be handled differently for server deployments.
 
 > **Warning**
 > The configuration produced by `ss-config` assumes a fresh system - it makes several changes to the system configuration as necessary, such as disabling `systemd-resolved`, enabling other services, and overwriting docker config.
 
-`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/1.3.0/).
+`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/2.0.0/).
 
 Rename the binary to `ss-config`, ensure it has execute permissions, and move it to your path. Alternatively you can use it directly from the download location.
 
@@ -396,18 +452,26 @@ Then, configure the DNS:
 ```yaml
 dns:
   dns:
-    debugging:
-      accountQueryDomain: account.safesurfer
-      protoQueryDomain: proto.safesurfer
-      domainLookupDomain: domain.safesurfer
-      explainDomain: explain.safesurfer
     sidecarContainers:
+      lmdbManager:
+        backend:
+          lmdbFeed:
+            enabled: false
+          postgres:
+            enabled: true
       healthCheck:
         enabled: true
         httpSecret:
           enabled: true
           secret: generate-a-strong-secret
         useFallbackRoute: true
+    initContainers:
+      initLmdb:
+        backend:
+          lmdbFeed:
+            enabled: false
+          postgres:
+            enabled: true
 blockpage:
   # We'll deploy the block page later
   domain: ''
@@ -445,12 +509,126 @@ Regardless of the option you choose, after booting (or rebooting) a DNS server, 
 
 ```
 CONTAINER ID   IMAGE                                                          COMMAND                  CREATED         STATUS                  PORTS     NAMES
-beb13c45b9de   registry.gitlab.com/safesurfer/core/apps/status:1.1.0          "/app/status-exec"       1 second ago    Up Less than a second             ss-status
+beb13c45b9de   registry.gitlab.com/safesurfer/core/apps/status:1.1.1          "/app/status-exec"       1 second ago    Up Less than a second             ss-status
 dfd035fb952f   registry.gitlab.com/safesurfer/core/apps/dns:1.16.0            "/app/run-server.sh"     6 seconds ago   Up 5 seconds                      ss-dns
 43a6b21886ab   registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2   "/app/lmdb-manager-e…"   7 seconds ago   Up 5 seconds                      ss-lmdb-manager
 ```
 
 If you were quick enough, you might have seen the init container running instead. This process should have been quick because our database is small, but it can take a few minutes once your database is loaded with domains and/or users. During the init phase, the DNS loads its own local database, meaning your DNS speed and/or uptime isn't tied to your postgres database. It will live-update after this. The postgres database can even go down completely without impacting internet access. However, users or admins will not be able to change settings while there is database downtime.
+
+#### Switching to LMDB feed
+Like the kubernetes DNS, the server DNS can connect to LMDB feed instead of postgres directly. The other `Switching to LMDB feed` section above explains how to deploy LMDB feed itself. The way you expose the feed to your DNS servers depends on your configuration.
+
+If the servers are within the same internal network as the cluster, you may like to use an internal load balancer, for example:
+
+```yaml
+# In K8s values.yaml
+dns:
+  lmdbFeed:
+    default:
+      service:
+        type: LoadBalancer
+        annotations:
+          # Annotations to create an internal load balancer, which depends on your platform
+          # networking.gke.io/load-balancer-type: "Internal"
+          # networking.gke.io/internal-load-balancer-allow-global-access: "true"
+```
+
+```yaml
+# In ss-config values.yaml
+dns:
+  dns:
+    sidecarContainers:
+      lmdbManager:
+        backend:
+          lmdbFeed:
+            enabled: true
+            external:
+              host: # The IP created
+              username: dns
+              password: generate-a-lmdb-feed-password
+              insecure: true
+          postgres:
+            enabled: false
+    initContainers:
+      initLmdb:
+        backend:
+          lmdbFeed:
+            enabled: true
+            external:
+              host: # The IP created
+              username: dns
+              password: generate-a-lmdb-feed-password
+              insecure: true
+          postgres:
+            enabled: false
+```
+
+If the servers are hosted externally, you can expose LMDB feed using an ingress. Check out the [ingress and cert setup](./ingress-and-cert-setup.md) guide, then adapt the following:
+
+```yaml
+# In K8s values.yaml
+dns:
+  lmdbFeed:
+    default:
+      ingress: 
+        enabled: true
+        host: lmdb-feed.ss.example.com
+        tls:
+          # See the ingress and cert guide
+```
+
+The DNS spec to connect to this externally would then look like this:
+
+```yaml
+# In ss-config values.yaml
+dns:
+  dns:
+    sidecarContainers:
+      lmdbManager:
+        backend:
+          lmdbFeed:
+            enabled: true
+            external:
+              host: 'lmdb-feed.ss.example.com:443'
+              username: dns
+              password: generate-a-lmdb-feed-password
+              insecure: false
+          postgres:
+            enabled: false
+    initContainers:
+      initLmdb:
+        backend:
+          lmdbFeed:
+            enabled: true
+            external:
+              host: 'lmdb-feed.ss.example.com:443'
+              username: dns
+              password: generate-a-lmdb-feed-password
+              insecure: false
+          postgres:
+            enabled: false
+```
+
+If you are using autoscaling, you can improve performance and availability by enabling peering on the DNS servers. With peering enabled, DNS containers initialize using each other's data, then seamlessly continue receiving live updates from the upstream feed. This enables:
+- Autoscaling even if LMDB feed is unreachable.
+- Reduced load on LMDB feed.
+- Reduced data transfer between regions.
+- Improved initialization speed.
+
+When using the DNS inside kubernetes, peering is automatically configured. If using autoscaling server DNS, an internal load balancer must be created manually. The default port for peering is 9098, a health check should be created and use the TCP or GRPC protocol. Once that's been created, the DNS containers can be instructed to use it like this:
+
+```yaml
+# In ss-config values.yaml
+dns:
+  dns:
+    initContainers:
+      initLmdb:
+        backend:
+          lmdbFeed:
+            peering:
+              host: '10.10.10.10' # substitute with LB IP
+```
 
 ## Testing the DNS
 Regardless of if you've set up the DNS on Kubernetes or Server(s), we can now query the DNS to see what it does. You can even switch your machine/network to your new DNS server to try it out.

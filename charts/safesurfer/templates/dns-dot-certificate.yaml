@@ -3,6 +3,10 @@
 #
 {{- if .Values.dns.enabled }}
 {{- if .Values.dns.dot.enabled }}
-{{ include "cert" (dict "cert" .Values.dns.dot.tls "overrideLegacyName" "letsencrypt-prod-dot" "Release" .Release "name" (include "name" (dict "Release" .Release "name" "dot" "nameOverride" .Values.dns.dot.nameOverride)) "namespace" .Values.dns.namespace "preferredChain" "ISRG Root X1" "dnsNames" (list  (printf "*.%s" .Values.dns.dot.host) .Values.dns.dot.host) "Values" .Values) }}
+{{ $release := .Release }}
+{{ $values := .Values }}
+{{- range $idx, $cert := .Values.dns.dot.tls }}
+{{ include "cert" (dict "cert" $cert "noHttpSupport" true "Release" $release "name" (include "name" (dict "Release" $release "name" (printf "dot-%s" $idx) "nameOverride" $values.dns.dot.nameOverride)) "namespace" $values.dns.namespace "Values" $values) }}
+{{- end }}
 {{- end }}
 {{- end }}

@@ -1,5 +1,65 @@
 # Changelog
 
+## 11.0.0
+
+### Breaking changes
+- `dns.doh` and `dns.dot` now support serving multiple certificates.
+- The LMDB manager container now supports the new `lmdbFeed` backend as well as connecting to postgres directly. Using `lmdbFeed` instead of a direct connection benefits security, performance, and availability. 
+- Each route ID under `api.routesConfig` now accepts a `maxRpm` parameter which decides the amount of requests per minute each pod may handle. This is mostly useful for websocket endpoints, which may be spammed if there is an interruption in network connectivity. These endpoints are set to 600 by default.
+- Support any number of Apple `.mobileconfig` configurations, and support settings that require a supervised device.
+- User comms consent is now an integration with sendgrid instead of storing the consent value in the deployment's database.
+- The `app_rules_per_device` quota has been introduced. Previously the amount of app rules that could be created was the same as the amount of apps allowed per device (`apps_per_device`), but now app rules can be created in advance for apps that aren't installed yet.
+- `GET /user/auth` has been removed from the API.
+- `POST /user/auth` has been removed from the API.
+- `POST /user/device/auth` has been removed from the API.
+- `GET /user/subscription/chargebee/redirect/payment-methods` has been removed from the API.
+- `GET /user/subscription/addons/extradevices` has been removed from the API.
+- `PUT /user/subscription/addons/extradevices` has been removed from the API.
+- `GET /user/subscription/name` has been removed from the API.
+- `POST /user/subscription` has been removed from the API.
+- `DELETE /user/subscription` has been removed from the API.
+- `POST /user/subscription/reactivate` has been removed from the API.
+- `POST /user/ip` has been removed from the API.
+- `GET /user/ip` has been removed from the API.
+- `POST /user` has been removed from the API.
+- `GET /user/is-setup` has been removed from the API.
+- `GET /categories/names` has been removed from the API.
+- All `/usage` API endpoints have been removed.
+- Add the concept of "reserved" metadata keys to the API. It is no longer valid to create a metadata key starting with `_reserved`.
+
+### Migration guide
+- If you are using DOH or DOT, `dns.doh.tls` and `dns.dot.tls` now expect an array. Each array element has the same format as the previously expected object.
+- If you want to use LMDB feed instead of connecting the DNS to the database directly, configure the new `dns.lmdbFeed` deployment.
+- If you don't want to use LMDB feed, you will have to update your values file. Any values previously under `dns.dns.sidecarContainers.lmdbManager` other than `resources`, `extraEnv`, `securityContext`, `image`, and `logLevel` are now located under `dns.dns.sidecarContainers.lmdbManager.backend.postgres`. Similarly; values under `dns.dns.initContainers.initLmdb` other than `resources`, `extraEnv`, `image`, `logLevel`, or `mapSize` must be moved to `dns.dns.initContainers.initLmdb.backend.postgres`.
+- Depending on your usage, the default value of 600 RPM for API websocket endpoints may be too low. For example, if the timeout for the endpoints is 10 minutes, the average connection duration may be around 5 minutes. If you're running two API instances with 10,000 clients, you'd expect a value around 1000 instead (`1/5*10000*2`). This can be adjusted under `api.routesConfig`.
+- If you're using the comms consent API, you'll need to pick the sendgrid unsubscribe group that the API will sync to. Then, using the admin app, export users with a negative or unknown comms consent status and add them to the unsubcribe group. Then, place the ID of the unsubscribe group as `api.sendgrid.commsConsentUnsubscribeGroup`.
+- If you're using `api.devices.appleMobileConfig`, it's best to re-examine the desired settings and add them as named profiles in the new configuration. Then, update the frontend to request the new settings.
+- Pull the dashboard updates that migrate to the new APIs. Then, build a new version and add to `values.yaml`.
+- If you've enabled app blocking by setting the quota `app_rules_per_device` to something greater than 0, also set `app_rules_per_device` to at least that amount. 
+- Review the API strings `otp_email_subject`, `otp_email_title`, `apple_mobileconfig_display_name`, `apple_mobileconfig_description`, `apple_mobileconfig_doh_display_name`, `apple_mobileconfig_doh_description`, `apple_mobileconfig_removal_password_description`, `apple_mobileconfig_restrictions_description`, and `apple_mobileconfig_filename`. They are either new or contain a placeholder.
+- Deploy the new version. 
+- If you've enabled it, `lmdbFeed` may take a little while to initialize depending on the size of your database. The new DNS deployment rollout won't succeed until it has initialized.
+
+### Non-breaking changes
+
+#### DNS
+- When operating DOH or DOT in sidecar mode, the health check container now automatically creates health check targets named `doh` and `dot` to check the status of these containers.
+- The `dns.doh.host` and `dns.dot.host` fields now supported comma-seperated values to support serving multiple hosts. Only the first value is used by frontend automatically.
+
+#### API
+- The API will now gracefully terminate websocket connections when a pod is terminated. You can use the `api.websocketShutdownRpm` parameter to control how quickly this occurs. You can use `api.terminationGracePeriodSeconds` to determine how long to give this process before forcefully terminating the pod. This prevents the API being spammed during deployment rollouts.
+- Apple `.mobileconfig` files with custom settings for browsers set will now have an extension blocklist automatically populated using the app classifications database from the admin app. There are new app platforms for chromium extensions, edge extensions, and firefox extensions. Edge receives both chromium and edge extensions because it supports both.
+- The per-IP rate limit for creating accounts is now configurable using `api.accounts.createAccountRateLimit.max`.
+- The `/v2/blocking` APIs are the replacement for `/v2/categories` and `/v2/blockinternet`, which are now deprecated and will be removed in the next release.
+- Add `/v2/devices` APIs to replace most under `/devices`, which are now deprecated and will be removed in the next release.
+- Improve the speed of getting the last activity timestamp of router client devices.
+- As part of the blocking APIs, users can group devices by members of their family or business. They can then manage blocking settings and history on a per-person basis instead of per-device.
+- It is now possible to perform an in-term change of the user's plan. This occurs without putting the subscription into a "future" state.
+
+#### Protocol checker
+- `protocolchecker.domains.id` can be used to create a unique domain that will only resolve when the user is connected to a particular DNS instance. This can be useful to tell which deployment they are connected to.
+- `protocolchecker.domains.tokenMatch` can be used to create a domain that will only resolve when the subdomain matches the DNS token being used by the user. This can be useful to tell whether the user is connected as a particular device without having access to the underlying network configuration.
+
 ## 10.0.0
 
 ### Breaking changes

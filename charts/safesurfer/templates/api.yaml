@@ -103,7 +103,7 @@ data:
 ---
 {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
 #
-# ipinfo secret, if any
+# nudity detection secret, if any
 #
 {{- if .Values.api.nudityDetectionProvider }}
 {{- include "nudityDetectionProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.nudityDetectionProvider "targetNamespace" .Values.api.namespace) }}
@@ -251,6 +251,7 @@ spec:
       - name: pq-emptydir
         emptyDir:
           medium: Memory
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
 
       containers:
         #
@@ -321,6 +322,8 @@ spec:
           - name: EMAIL_OUR_ADDRESS
             value: {{ .Values.api.sendgrid.senderAddress }}
           {{- end }}
+          - name: SAFESURFER_SENDGRID_COMMS_CONSENT_GROUP
+            value: {{ .Values.api.sendgrid.commsConsentUnsubscribeGroup | quote }}
 
           #
           # Port to run on so service can communicate
@@ -446,6 +449,8 @@ spec:
             value: '{{- range $key := .Values.api.accounts.data.visibleKeys }}{{ $key }},{{- end }}'
           - name: APP_EDITABLE_DATA_KEYS
             value: '{{- range $key := .Values.api.accounts.data.editableKeys }}{{ $key }},{{- end }}'
+          - name: APP_ACCOUNT_CREATIONS_PER_IP_PER_DAY
+            value: {{ .Values.api.accounts.createAccountRateLimit.max | int | quote }}
 
           #
           # Chargebee API details
@@ -500,59 +505,9 @@ spec:
           # The base URL of the frontend
           #
           - name: MY_BASE_URL
-            value: http://{{ .Values.frontend.ingress.host }}
-
-          #
-          # Config for generating apple "mobileconfig" files:
-          #
-          - name: APPLE_MOBILECONFIG_DOH_ADDRESSES
-            value: {{ .Values.api.devices.appleMobileConfig.dohAddresses | quote }}
-          - name: APPLE_MOBILECONFIG_DOH_HOST
-            value: {{ .Values.api.devices.appleMobileConfig.dohHost }}
-          - name: APPLE_MOBILECONFIG_PAYLOAD_DESCRIPTION
-            value: {{ .Values.api.devices.appleMobileConfig.description }}
-          - name: APPLE_MOBILECONFIG_PAYLOAD_DISPLAY_NAME
-            value: {{ .Values.api.devices.appleMobileConfig.name }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_STABLE
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveStable | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_BETA
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveBeta | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_BRAVE_NIGHTLY
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.braveNightly | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_CHROME
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.chrome | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_EDGE
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.edge | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_VIVALDI
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.vivaldi | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_CHROMIUM
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.chromium | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_FIREFOX
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.firefox | quote }}
-          - name: APPLE_MOBILECONFIG_SETTINGS_YANDEX
-            value: {{ .Values.api.devices.appleMobileConfig.extraSettings.yandex | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_PAYLOAD
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.payload | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_DNS_SETTINGS
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.dnsSettings | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_STABLE
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveStable | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_BETA
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveBeta | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_BRAVE_NIGHTLY
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.braveNightly | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_CHROME
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.chrome | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_EDGE
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.edge | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_VIVALDI
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.vivaldi | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_CHROMIUM
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.chromium | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_FIREFOX
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.firefox | quote }}
-          - name: APPLE_MOBILECONFIG_IDENTIFIER_YANDEX
-            value: {{ .Values.api.devices.appleMobileConfig.identifiers.yandex | quote }}
+            value: https://{{ .Values.frontend.ingress.host }}
+          - name: APP_HOST
+            value: {{ .Values.api.ingress.host | quote }}
 
           #
           # Config for google play subscriptions.
@@ -604,20 +559,24 @@ spec:
           # Blocking config
           - name: APP_MAX_PLAN_AHEAD_DURATION
             value: {{ .Values.api.blocking.maxPlanAheadDuration | quote }}
+
+          - name: APP_CLEAN_SHUTDOWN_WEBSOCKET_RPM
+            value: {{ .Values.api.websocketShutdownRpm | int | quote }}
           
         ports:
           - containerPort: {{ .Values.api.port }}
         readinessProbe:
-          tcpSocket:
-            port: {{ .Values.api.port }}
-          initialDelaySeconds: 2
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 1
           periodSeconds: 10
         livenessProbe:
           httpGet:
             path: /health
             port: 8082
           initialDelaySeconds: 1
-          periodSeconds: 5
+          periodSeconds: 10
         resources:
           {{- toYaml .Values.api.resources | nindent 10 }}
         # Mount the service account token as a file, plus resources
@@ -780,6 +739,8 @@ metadata:
     {{- if .Values.api.ingress.whitelistSourceRange }}
     nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingress.whitelistSourceRange | quote }}
     {{- end }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:
@@ -828,6 +789,8 @@ metadata:
     {{- if .Values.api.ingressIpv6.whitelistSourceRange }}
     nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingressIpv6.whitelistSourceRange | quote }}
     {{- end }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
 spec:
   ingressClassName: {{ .Values.api.ingressIpv6.class }}
   tls:
@@ -873,6 +836,8 @@ metadata:
     {{- if .Values.api.adminIngress.whitelistSourceRange }}
     nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.adminIngress.whitelistSourceRange | quote }}
     {{- end }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:
@@ -931,6 +896,8 @@ metadata:
     {{- if .Values.api.extraIngress.whitelistSourceRange }}
     nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.extraIngress.whitelistSourceRange | quote }}
     {{- end }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:

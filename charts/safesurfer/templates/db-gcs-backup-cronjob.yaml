@@ -43,7 +43,7 @@ spec:
               - name: APP_GOOG_BUCKET
                 value: {{ required "GCS bucket required" .Values.db.backups.gcs.bucket }}
               # DB connection
-              {{ include "dbEnvs" . | indent 14 }}
+              {{ include "dbEnvs" (dict "Values" .Values "Release" .Release) | indent 14 }}
               resources:
                 {{- toYaml .Values.db.backups.gcs.resources | nindent 16 }}
           restartPolicy: OnFailure

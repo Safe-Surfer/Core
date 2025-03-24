@@ -44,7 +44,7 @@ dns:
     ## Amount of pods to deploy. Overridden by the hpa if present.
     replicas: 2
     ## Container image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns:1.17.1
+    image: registry.gitlab.com/safesurfer/core/apps/dns:1.18.0
     ## How to roll out new versions
     deploymentStrategy:
       rollingUpdate:
@@ -231,62 +231,95 @@ dns:
       ## Most config from dns.dns.initContainers.initLmdb also applies to the sidecar container, although `accountSegmentation`
       ## config may be different.
       lmdbManager:
-        ## If enabled, when accounts are fully rebuilt, they are done in batches instead
-        ## of all at once. When segmentation is enabled, the time for a full rebuild scales
-        ## with the amount of users, and the memory usage remains the same. When segmentation
-        ## is disabled, the time for a full rebuild scales better, but memory usage grows
-        ## with the amount of accounts.
-        accountSegmentation:
-          enabled: true
-          size: 30_000
-        ## Run a full rebuild of accounts this often, starting from when the DNS starts.
-        accountFullRebuildInterval: 12h
-        ## Allow this amount of window around the accountFullRebuildInterval. The default value of
-        ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
-        ## Setting this to 0h removes any randomness and rebuilds exactly every accountFullRebuildInterval.
-        accountFullRebuildWindow: 4h
-        ## Run a full rebuild of categories this often, starting from when the DNS starts.
-        categoryFullRebuildInterval: 30m
-        ## Run a full rebuild of category options this often, starting from when the DNS starts.
-        categoryOptionFullRebuildInterval: 30m
-        ## Run a full rebuild of domains this often, starting from when the DNS starts.
-        domainFullRebuildInterval: 24h
-        ## Allow this amount of window around the domainFullRebuildInterval. The default value of
-        ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
-        ## Setting this to 0h removes any randomness and rebuilds exactly every domainFullRebuildInterval.
-        domainFullRebuildWindow: 4h
-        ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
-        ## but live updates will queue while a full domain rebuild is running.
-        streamDomains: true
-        ## Extra environment variables for lmdb manager.
-        extraEnv: []
         ## Container image to use for lmdb manager.
         logLevel: info
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.18.0
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.19.2
+        ## Configure which backend to use for LMDB manager.
+        backend:
+          ## Connect to an instance of LMDB feed.
+          ## LMDB feed can be enabled under the `dns.lmdbFeed` key.
+          ## The default value tries to connect to the lmdbFeed instance
+          ## running as part of this deployment.
+          lmdbFeed:
+            enabled: false
+            maxReceiveSize: 1GB
+            messageTimeout: 1m
+            ## Connect to the lmdbFeed instance enabled under `dns.lmdbFeed` for this deployment.
+            internal:
+              enabled: true
+              insecure: true
+              compress: true
+              username:
+            ## Connect to an lmdbFeed instance hosted somewhere else.
+            external:
+              enabled: false
+              ## e.g. lmdb-feed.example.com:443
+              host:
+              username:
+              password:
+              insecure: false
+              compress: true
+          ## Connect to postgres directly to obtain data for the DNS.
+          ## If enabled, the database connection must be configured under
+          ## the "db" top-level key.
+          postgres:
+            enabled: true
+            ## If enabled, when accounts are fully rebuilt, they are done in batches instead
+            ## of all at once. When segmentation is enabled, the time for a full rebuild scales
+            ## with the amount of users, and the memory usage remains the same. When segmentation
+            ## is disabled, the time for a full rebuild scales better, but memory usage grows
+            ## with the amount of accounts.
+            accountSegmentation:
+              enabled: true
+              size: 30_000
+            ## Run a full rebuild of accounts this often, starting from when the DNS starts.
+            accountFullRebuildInterval: 12h
+            ## Allow this amount of window around the accountFullRebuildInterval. The default value of
+            ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+            ## Setting this to 0h removes any randomness and rebuilds exactly every accountFullRebuildInterval.
+            accountFullRebuildWindow: 4h
+            ## Run a full rebuild of categories this often, starting from when the DNS starts.
+            categoryFullRebuildInterval: 30m
+            ## Run a full rebuild of category options this often, starting from when the DNS starts.
+            categoryOptionFullRebuildInterval: 30m
+            ## Run a full rebuild of domains this often, starting from when the DNS starts.
+            domainFullRebuildInterval: 24h
+            ## Allow this amount of window around the domainFullRebuildInterval. The default value of
+            ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+            ## Setting this to 0h removes any randomness and rebuilds exactly every domainFullRebuildInterval.
+            domainFullRebuildWindow: 4h
+            ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
+            ## but live updates will queue while a full domain rebuild is running.
+            streamDomains: true
+        ## Security context for LMDB manager.
         securityContext:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
           privileged: false
           runAsUser: 250
           runAsGroup: 250
+        ## Extra environment variables for lmdb manager.
+        extraEnv: []
         ## Resources to allocate LMDB manager.
-        ## The combination of these resources and the DNS container resources also combine to constitute the resources
-        ## available to each init container. The main resource-using init container is the initial LMDB build,
-        ## so it's logical that running full account/domain rebuilds in parallel would at least cover the resources
-        ## of doing each in series like the init container does. See https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#resources
+        ## WARNING: allocating a memory limit to LMDB manager may cause live updates to deadlock on restart,
+        ## since kubernetes cannot be configured to use a lighter signal to kill the container.
+        ## The default CPU limit makes peering slightly slower when using lmdb feed, because higher CPU
+        ## usage will cause the deployment to scale based on the CPU usage of lmdbManager itself
+        ## when the HPA is enabled. If the HPA is not enabled, you are not using lmdb feed, you are
+        ## not using peering with lmdb feed, or you are also increasing the
+        ## CPU request of the DNS itself, you can increase the CPU limit/request approriately. 
         resources:
           requests:
-            memory: "3072Mi"
-            cpu: "100m"
+            memory: "512Mi"
+            cpu: "300m"
           limits:
-            memory: "3072Mi"
-            cpu: "750m"
+            cpu: "300m"
       ## The health check container is queried by kubernetes to determine whether the DNS server is running
       ## properly. If the health check fails, the DNS pod will be restarted. You can open up the health check
       ## to e.g. an external load balancer.
       healthCheck:
         ## Image to use
-        image: registry.gitlab.com/safesurfer/core/apps/status:1.1.0
+        image: registry.gitlab.com/safesurfer/core/apps/status:1.1.1
         ## Port to bind to on the pod (for HTTP)
         bindPort: 8080
         ## Optional secret that must be defined in the URL for the API to respond and check health.
@@ -331,75 +364,119 @@ dns:
     initContainers:
       ## Required: run lmdb manager initially to build the database before running the DNS pod.
       initLmdb:
-        ## The max amount of open/idle connections to use when connecting to the database.
-        ## Setting these to 0 uses the default values, which are currently 2 and unlimited
-        ## respectively but may change in the future.
-        maxIdleConns: 0 # Actually 2, since 0 is default
-        maxOpenConns: 10
-        ## If enabled, when accounts are fully rebuilt, they are done in batches instead
-        ## of all at once. When segmentation is enabled, the time for a full rebuild scales
-        ## with the amount of users, and the memory usage remains the same. When segmentation
-        ## is disabled, the time for a full rebuild scales better, but memory usage grows
-        ## with the amount of accounts.
-        accountSegmentation:
-          enabled: true
-          size: 50_000
-        ## The amount of time before getting a db connection is considered a failure.
-        ## This setting also applies to the lmdbManager sidecar container.
-        pgConnTimeout: 10s
-        ## The amount of rows to get at once for domain/account queries.
-        ## Higher values speed up the sync process at the cost of using more memory.
-        ## This setting also applies to the lmdbManager sidecar container.
-        ## Note that building an account requires looking at many tables, many of which
-        ## have multiple rows per account. The account setting here applies to all tables.
-        domainPgIterSize: 50_000
-        accountPgIterSize: 50_000
-        ## The max amount of domains to live-update at once.
-        domainLiveUpdateMaxBatchSize: 100
-        ## The max amount of time to wait for more domain live-updates to come in
-        ## before doing them all.
-        domainLiveUpdateMaxDelay: 10s
-        ## The max amount of category options to live-update at once.
-        categoryOptionLiveUpdateMaxBatchSize: 1
-        ## The max amount of time to wait for more category option live-updates to come in
-        ## before doing them all.
-        categoryOptionLiveUpdateMaxDelay: 1s
-        ## The max amount of categories to live-update at once.
-        categoryLiveUpdateMaxBatchSize: 1
-        ## The max amount of time to wait for more category live-updates to come in
-        ## before doing them all.
-        categoryLiveUpdateMaxDelay: 1s
-        ## The max amount of accounts to live-update at once.
-        accountLiveUpdateMaxBatchSize: 100
-        ## The max amount of time to wait for more account live-updates to come in
-        ## before doing them all.
-        accountLiveUpdateMaxDelay: 1s
-        ## The duration to plan ahead according to the account rules. This should be at least the
-        ## fullRebuildInterval plus the amount of time a full rebuild could reasonably take.
-        ## Higher values allow the DNS to return correct results for longer without a rebuild,
-        ## but takes more CPU at each full or partial rebuild.
-        ## This setting also applies to the lmdbManager sidecar container.
-        accountPlanAheadDuration: 168h
-        ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
-        ## but live updates will queue while a full domain rebuild is running.
-        streamDomains: true
+        ## lmdb manager image for the initial run.
+        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.19.2
         ## The size of the memory-mapped database. On linux, this is not a disk-space or memory requirement
         ## and should be set as large as possible, per http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5.
         ## This setting also applies to the lmdbManager sidecar container.
         mapSize: 1TB
-        nameOverride:
-        extraEnv: []
         logLevel: info
-        ## lmdb manager image for the initial run.
-        image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.18.0
-        ## Default resources is roughly the sum of all default container resources.
+        extraEnv: []
+        ## Which backend to use to get data for the DNS.
+        backend:
+          ## Connect to an instance of LMDB feed.
+          ## LMDB feed can be enabled under the `dns.lmdbFeed` key.
+          ## The default value tries to connect to the lmdbFeed instance
+          ## running as part of this deployment.
+          lmdbFeed:
+            enabled: false
+            maxReceiveSize: 1GB
+            messageTimeout: 1m
+            ## If enabled, DNS pods will use each other to start up more quickly when possible.
+            peering:
+              enabled: true
+              compress: true
+              ## When peering is enabled, lmdb-manager will alternate between trying neighbours
+              ## and the upstream when trying to initialize. It will try this up to maxTries
+              ## times before the container is restarted and subject to kubernetes retry policy.
+              maxTries: 3
+              ## The port to use for peering.
+              port: 9098
+              ## When acting as a server for neighbours, send the required information to neighbours
+              ## in batches with this specification. Functions the same as the parameters under dns.lmdbFeed.
+              ## Note: maxBatchSize is based on a worse-case calculation. It is very unlikely that updates
+              ## will use anywhere near as much as it specifies.
+              maxBatchSize: "1GB"
+              maxBatchDuration: 1s
+              messageTimeout: 30s
+            ## Connect to the lmdbFeed instance enabled under `dns.lmdbFeed` for this deployment.
+            internal:
+              enabled: true
+              insecure: true
+              compress: true
+              username:
+            ## Connect to an lmdbFeed instance hosted somewhere else.
+            external:
+              enabled: false
+              ## e.g. lmdb-feed.example.com:443
+              host:
+              username:
+              password:
+              insecure: false
+              compress: true
+          ## Connect to postgres directly to obtain data for the DNS.
+          ## If enabled, the database connection must be configured under
+          ## the "db" top-level key.
+          postgres:
+            enabled: true
+            ## The max amount of open/idle connections to use when connecting to the database.
+            ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+            ## respectively but may change in the future.
+            maxIdleConns: 0 # Actually 2, since 0 is default
+            maxOpenConns: 10
+            ## If enabled, when accounts are fully rebuilt, they are done in batches instead
+            ## of all at once. When segmentation is enabled, the time for a full rebuild scales
+            ## with the amount of users, and the memory usage remains the same. When segmentation
+            ## is disabled, the time for a full rebuild scales better, but memory usage grows
+            ## with the amount of accounts.
+            accountSegmentation:
+              enabled: true
+              size: 50_000
+            ## The amount of rows to get at once for domain/account queries.
+            ## Higher values speed up the sync process at the cost of using more memory.
+            ## This setting also applies to the lmdbManager sidecar container.
+            ## Note that building an account requires looking at many tables, many of which
+            ## have multiple rows per account. The account setting here applies to all tables.
+            domainPgIterSize: 50_000
+            accountPgIterSize: 50_000
+            ## The max amount of domains to live-update at once.
+            domainLiveUpdateMaxBatchSize: 100
+            ## The max amount of time to wait for more domain live-updates to come in
+            ## before doing them all.
+            domainLiveUpdateMaxDelay: 10s
+            ## The max amount of category options to live-update at once.
+            categoryOptionLiveUpdateMaxBatchSize: 1
+            ## The max amount of time to wait for more category option live-updates to come in
+            ## before doing them all.
+            categoryOptionLiveUpdateMaxDelay: 1s
+            ## The max amount of categories to live-update at once.
+            categoryLiveUpdateMaxBatchSize: 1
+            ## The max amount of time to wait for more category live-updates to come in
+            ## before doing them all.
+            categoryLiveUpdateMaxDelay: 1s
+            ## The max amount of accounts to live-update at once.
+            accountLiveUpdateMaxBatchSize: 100
+            ## The max amount of time to wait for more account live-updates to come in
+            ## before doing them all.
+            accountLiveUpdateMaxDelay: 1s
+            ## The duration to plan ahead according to the account rules. This should be at least the
+            ## fullRebuildInterval plus the amount of time a full rebuild could reasonably take.
+            ## Higher values allow the DNS to return correct results for longer without a rebuild,
+            ## but takes more CPU at each full or partial rebuild.
+            ## This setting also applies to the lmdbManager sidecar container.
+            accountPlanAheadDuration: 168h
+            ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
+            ## but live updates will queue while a full domain rebuild is running.
+            streamDomains: true
+        ## Resources to allocate to initialization - using the postgres backend may require
+        ## a larger value.
         resources:
           requests:
-            memory: 5Gi
+            memory: 2512Mi
             cpu: 600m
           limits:
-            memory: 5Gi
-            cpu: '2'
+            memory: 2512Mi
+            cpu: '1.5'
       ## Recommended: create iptables rules on the node to protect against DDOS attacks.
       ## This only protects plain DNS, not the encrypted DNS methods which are less vulnerable
       ## to DDOS. After this init container
@@ -609,12 +686,12 @@ dns:
     ## Cert generation for the hostname. Note that for DOH, automatic re-rollout upon a refreshed cert
     ## is not supported. You must manually restart when a new cert has been generated. If DOH is hooked up
     ## to an external HTTPS load balancer with SSL offloading, this will not be problem.
-    tls:
-      custom:
-        enabled: true
-        cert:
-        key:
-      secretName:
+    tls: []
+    # - custom:
+    #     enabled: true
+    #     cert:
+    #     key:
+    #   secretName:
     ## Configure the kubernetes health check.
     healthCheck:
       ## If true, ignore whether the certificate is valid when checking the deployment health.
@@ -622,7 +699,7 @@ dns:
       ## validity of the backend cert.
       ignoreCert: false
     ## Custom DOH forwarder image to use.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.1
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.2.0
     ## How much to log
     logLevel: info
     ## Extra environment variables for the DOH container.
@@ -736,12 +813,12 @@ dns:
     ## be valid for both the host above AND any subdomain of the host, e.g.
     ## dot.example.com AND *.dot.example.com. This is because the subdomain is used
     ## to specify the unique device when connecting to DOT.
-    tls:
-      custom:
-        enabled: true
-        cert:
-        key:
-      secretName:
+    tls: []
+    # - custom:
+    #     enabled: true
+    #     cert:
+    #     key:
+    #   secretName:
     ## Configure the kubernetes health check.
     healthCheck:
       ## If true, ignore whether the certificate is valid when checking the deployment health.
@@ -749,7 +826,7 @@ dns:
       ## validity of the backend cert.
       ignoreCert: false
     ## Container image for DOT forwarder.
-    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.1.1
+    image: registry.gitlab.com/safesurfer/core/apps/dns-proxy:1.2.0
     ## How much to log
     logLevel: info
     ## Extra env for the DOT container.
@@ -1013,7 +1090,7 @@ dns:
         minReplicas: 2
         maxReplicas: 10
         targetAverageCPUUtilization: 80
-        targetAverageMemoryUtilization: 80
+        targetAverageMemoryUtilization: 100
       ## Pod disruption budget.
       pdb:
         enabled: false
@@ -1021,10 +1098,10 @@ dns:
       ## Resources for each pod
       resources:
         requests:
-          memory: "100Mi"
+          memory: "40Mi"
           cpu: "100m"
         limits:
-          memory: "100Mi"
+          memory: "80Mi"
           cpu: "150m"
       ## The frontend collects logs from the DNS, or other clickhoused instances.
       frontend:
@@ -1244,6 +1321,193 @@ dns:
           ## the protocol and host with no trailing slash, e.g. https://ipsetd-ingress.example.com
           baseURL:
 
+  ## LMDB feed is an event source for the lmdbManager containers of the dns. By enabling
+  ## LMDB feed, DNS servers no longer need to connect directly to the database. Instead,
+  ## they connect to LMDB feed, which feeds them all the data they need from a central source.
+  ## Using LMDB feed has the following advantages over a direct database connection:
+  ## - Reduced total resource usage, as blocking rules for each customer are evaluated centrally.
+  ## - Improved security, as DNS servers are not given a database connection.
+  ## - Faster scaling, as DNS servers can initialize from each other instead of (or as well as) pulling from the central source.
+  ## LMDB feed is a stateful set. The amount of replicas is limited to 1. Going higher
+  ## than this would not improve availability, because each client and feed instance share
+  ## state. You can define multiple stateful sets if, for example,
+  ## each is used for a different set of DNS servers with different resource requirements,
+  ## or for scaling/availability purposes.
+  lmdbFeed:
+    ## Define extra LMDB feed instances. Each array element has the same spec as below,
+    ## and every field must be specified in each array element. Each array element must
+    ## also have a field "name" to avoid clashes between names.
+    extraInstances: []
+    ## The default LMDB feed set. If hosting DNS servers within the same cluster and using
+    ## lmdbFeed as their backend, they will connect to this one by default.
+    default:
+      enabled: false
+      ## The image to use for the feed.
+      image: registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.19.2
+      ## How much to log.
+      logLevel: info
+      ## Configure persistence. With this enabled, availability is increased, because clients can pick
+      ## up where they left off even if the pod restarts.
+      persistence:
+        enabled: false
+        ## Optionally define the name of a storage class that will be used for the
+        ## data directory.
+        storageClassName:
+        ## Optionally define a custom storage class that will be owned by the deployment
+        ## (meaning it will be removed if the chart is uninstalled) and used by lmdbFeed,
+        ## unless storageClassName is defined above.
+        ## Must be a valid storage class object: https://kubernetes.io/docs/concepts/storage/storage-classes/
+        storageClass:
+        ## Size of the volume for LMDB. The amount of space used depends on the amount of domains
+        ## and custom user rules added to the main database.
+        size: 10Gi
+      ## Configure client access to the feed by providing a username/password.
+      ## This also determines the subsection of categories/users the DNS has access to.
+      ## This is a YAML file provided as a string, so you can use --set-file to keep it out
+      ## of the values if you wish.
+      clientConfig: |-
+        # client1: # this is the username
+        #   password: test
+      ## Configure network access to LMDB. You may want to change this to a LoadBalancer type with annotations
+      ## to create an internal load balancer to allow DNS servers on the internal network (but not within the cluster)
+      ## to connect.
+      ## This service does not use TLS.
+      service:
+        type: ClusterIP
+        port: 80
+        externalIPs: []
+        ## If specified, claim a particular load balancer IP
+        loadBalancerIP:
+        ## Any extra annotations to add to the service
+        annotations:
+        ## If enabled and type set to LoadBalancer, only the specified list of IP ranges may access the 
+        ## LoadBalancer.
+        loadBalancerSourceRanges:
+        ## Whether to create a Network Endpoint Group for LMDB feed on the Google Cloud Platform.
+        isGCPNEG: false
+      ## Configure the ingress, allowing HTTP traffic to reach lmdbFeed from the internet.
+      ingress:
+        enabled: false
+        ## The hostname for lmdbFeed on the internet.
+        host:
+        ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
+        ## instance.
+        class: nginx
+        ## If specified, only the comma-separated CIDR IP ranges will be allowed
+        ## to access this ingress.
+        whitelistSourceRange:
+        ## Configuration for rate limiting
+        rateLimiting:
+          enabled: false
+          ## The amount of requests to allow per minute per client (roughly).
+          rpm: '120'
+        ## Configure TLS for lmdbFeed.
+        tls:
+          http01: true
+          custom:
+            enabled: false
+            cert:
+            key:
+          secretName:
+      ## As operations are made to the database, batches are collected. They are sent when one of the
+      ## below constraints is met. Making these values larger increases memory usage and makes live-updates
+      ## slower, but improves network efficiency.
+      ## Note: maxBatchSize is based on a worse-case calculation. It is very unlikely that updates
+      ## will use anywhere near as much as it specifies.
+      maxBatchSize: "1GB"
+      maxBatchDuration: 1s
+      ## Keep a buffer of this many batches for each client. The connection will fail if they
+      ## cannot consume the buffer in time. Increasing these values consumes more memory but is
+      ## more tolerant of poorer connections to clients. 
+      batchBufferSize: 500
+      ## The max amount of time to keep connection state around waiting for clients to reconnect.
+      ## Increasing this uses more memory, but is more tolerant of poor network connections.
+      maxListenerRetainDuration: 1m
+      ## Keep the most recent batchHistoryLength operations so that clients that
+      ## have been disconnected for a short amount of time can get back up to speed quickly.
+      ## If a client has been disconnected long enough that they would require data no longer
+      ## in the in-memory history, they will have to complete a lengthier full rebuild process.
+      batchHistoryLength: 300_000
+      ## The size of the memory-mapped database. On linux, this is not a disk-space or memory requirement
+      ## and should be set as large as possible, per http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5.
+      mapSize: 1TB
+      ## If enabled, when accounts are fully rebuilt, they are done in batches instead
+      ## of all at once. When segmentation is enabled, the time for a full rebuild scales
+      ## with the amount of users, and the memory usage remains the same. When segmentation
+      ## is disabled, the time for a full rebuild scales better, but memory usage grows
+      ## with the amount of accounts.
+      accountSegmentation:
+        enabled: true
+        size: 50_000
+      ## The amount of rows to get at once for domain/account queries.
+      ## Higher values speed up the sync process at the cost of using more memory.
+      ## This setting also applies to the lmdbManager sidecar container.
+      ## Note that building an account requires looking at many tables, many of which
+      ## have multiple rows per account. The account setting here applies to all tables.
+      domainPgIterSize: 50_000
+      accountPgIterSize: 50_000
+      ## The max amount of domains to live-update at once.
+      domainLiveUpdateMaxBatchSize: 100
+      ## The max amount of time to wait for more domain live-updates to come in
+      ## before doing them all.
+      domainLiveUpdateMaxDelay: 10s
+      ## The max amount of category options to live-update at once.
+      categoryOptionLiveUpdateMaxBatchSize: 1
+      ## The max amount of time to wait for more category option live-updates to come in
+      ## before doing them all.
+      categoryOptionLiveUpdateMaxDelay: 1s
+      ## The max amount of categories to live-update at once.
+      categoryLiveUpdateMaxBatchSize: 1
+      ## The max amount of time to wait for more category live-updates to come in
+      ## before doing them all.
+      categoryLiveUpdateMaxDelay: 1s
+      ## The max amount of accounts to live-update at once.
+      accountLiveUpdateMaxBatchSize: 100
+      ## The max amount of time to wait for more account live-updates to come in
+      ## before doing them all.
+      accountLiveUpdateMaxDelay: 1s
+      ## The duration to plan ahead according to the account rules. This should be at least the
+      ## fullRebuildInterval plus the amount of time a full rebuild could reasonably take.
+      ## Higher values allow the DNS to return correct results for longer without a rebuild,
+      ## but takes more CPU at each full or partial rebuild.
+      ## This setting also applies to the lmdbManager sidecar container.
+      accountPlanAheadDuration: 168h
+      ## If true, stream domains directly from postgres into LMDB. This reduces memory usage,
+      ## but live updates will queue while a full domain rebuild is running.
+      streamDomains: true
+      ## Run a full rebuild of accounts this often, starting from when the feed starts.
+      accountFullRebuildInterval: 24h
+      ## Allow this amount of window around the accountFullRebuildInterval. The default value of
+      ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+      ## Setting this to 0h removes any randomness and rebuilds exactly every accountFullRebuildInterval.
+      accountFullRebuildWindow: 4h
+      ## Run a full rebuild of categories this often, starting from when the DNS starts.
+      categoryFullRebuildInterval: 30m
+      ## Run a full rebuild of category options this often, starting from when the DNS starts.
+      categoryOptionFullRebuildInterval: 30m
+      ## Run a full rebuild of domains this often, starting from when the DNS starts.
+      domainFullRebuildInterval: 24h
+      ## Allow this amount of window around the domainFullRebuildInterval. The default value of
+      ## 4h will allow the full rebuild to occur 2h earlier or 2h later.
+      ## Setting this to 0h removes any randomness and rebuilds exactly every domainFullRebuildInterval.
+      domainFullRebuildWindow: 4h
+      ## The port to run on.
+      port: 8080      
+      ## The feed implements client-side postgres connection pooling.
+      ## The max amount of open/idle connections to use when connecting to the postgres database.
+      ## Setting these to 0 uses the default values, which are currently 2 and unlimited
+      ## respectively but may change in the future.
+      maxIdleConns: 0
+      maxOpenConns: 0
+      ## The resources the feed is allowed to take.
+      resources:
+        requests:
+          memory: 2.5Gi
+          cpu: 400m
+        limits:
+          memory: 5Gi
+          cpu: '1'
+
   ## Node selector for all deployments under the `dns` top-level key.
   nodeSelector: {}
   ## Tolerations for all deployments under the `dns` top-level key.
@@ -1258,7 +1522,7 @@ api:
   ## How many instances of the API to deploy. Overridden by the autoscaler if present.
   replicas: 2
   ## The image to use for the API.
-  image: registry.gitlab.com/safesurfer/core/apps/api:10.33.0
+  image: registry.gitlab.com/safesurfer/core/apps/api:11.0.7
   ## The port to run on.
   port: 8080
   ## The port to run the admin API on. The only need to change this is if it clashes
@@ -1321,10 +1585,13 @@ api:
   routesConfig:
     "166": # /v2/user/live-updates websocket
       timeout: 10m
+      maxRpm: 600
     "198": # /v2/quotas/{name}/live-updates-internal websocket
       timeout: 10m
+      maxRpm: 600
     "227": # /v2/blocking/this-device/apps/live-updates websocket
       timeout: 10m
+      maxRpm: 600
     # "24":
     #   disable: true
     # "62":
@@ -1355,6 +1622,7 @@ api:
       - 228 # Set timer running status
       - 236 # Get own metadata
       - 240 # Location
+      - 248 # SMM with screenshot
     router:
       routes:
       - 11 # Refresh JWT
@@ -1390,18 +1658,21 @@ api:
     ## The amount of devices the user can have. Note that router client devices are counted separately.
     devices:
       maxValue: 200
+    ## The amount of groups the user can define.
+    groups:
+      maxValue: 200
     ## The max amount of router client devices the user can have across the whole account.
     client_devices:
       maxValue: 1000
     ## The max amount of screentime timetables per device or router client.
     screentime_timetables_per_device:
-      maxValue: 10
+      maxValue: 20
     ## The max amount of screentime deadlines per device or router client.
     screentime_deadlines_per_device:
-      maxValue: 10
+      maxValue: 20
     ## The max amount of screentime timers per device or router client.
     screentime_timers_per_device:
-      maxValue: 10
+      maxValue: 20
     ## The max amount of whitelisted or blacklisted domains per set of custom rules.
     ## This applies to the normal categories rules and also each screentime timetable,
     ## timer, or deadline.
@@ -1446,6 +1717,10 @@ api:
     ## off the app ID tracking feature, which is the default.
     apps_per_device:
       maxValue: 0
+    ## The max amount of app rules you can add to each device. Setting this to 0 effectively disables
+    ## the app blocking API, which is the default.
+    app_rules_per_device:
+      maxValue: 0
     ## The max amount of nudity detections per account per day. Setting this to 0 effectively turns
     ## off this feature, which is the default. This only affects double-verification of nudity detections.
     ## If the quota is exceeded, new detections can still be added, but will not be double-verified.
@@ -1455,6 +1730,12 @@ api:
     ## off this feature, which is the default.
     location_history:
       maxValue: 0
+    ## The max amount of iOS removal passwords to store. This should, at all times, be greater
+    ## than or equal to the amount of devices that may be registered. Passwords are stored
+    ## even when devices have been deleted. When a new password is stored, the oldest
+    ## un-used one is deleted to make room in the quota if necessary.
+    ios_removal_passwords:
+      maxValue: 1_000
 
   ## Arbitrary quotas to keep track of, in the same format as above.
   extraQuotas: {}
@@ -1557,6 +1838,14 @@ api:
     maxReplicas: 10
     targetAverageMemoryUtilization: 60
     targetAverageCPUUtilization: 80
+
+  ## How long to wait for an API pod to stop gracefully. You may need to increase this if
+  ## hosting a large number of websocket connections on each API pod, since these are shut
+  ## down gradually at the rate below.
+  terminationGracePeriodSeconds: 600
+
+  ## When an API pod shuts down, how many websockets to disconnect per minute.
+  websocketShutdownRpm: 100
 
   ## Configuration for the pod disruption budget
   pdb:
@@ -1667,14 +1956,15 @@ api:
     emailOtpValidityDuration: 10m
     ## If an email OTP is required, how many tries the user has for a given OTP.
     emailOtpMaxTries: 5
-    ## Rate-limit the amount of email OTP sends per user account per minute. Takes the same format as 
-    ## signonRateLimit above.
+    ## Rate-limit the amount of email OTP sends per user account per minute.
     emailOtpRateLimit:
       max: 2
-    ## Rate-limit the amount of password reset requests sends per user account per minute. Takes the same format as 
-    ## signonRateLimit above.
+    ## Rate-limit the amount of password reset requests sends per user account per minute.
     passwordResetRateLimit:
       max: 2
+    ## Rate-limit the amount of account creations per IP address per day.
+    createAccountRateLimit:
+      max: 100
     ## The API supports authenticating with routers running our router integration
     ## without transmitting account details over the local network.
     ## This parameter configures how long the client has to grant the remote auth request. Once granted, the router has this
@@ -1901,6 +2191,8 @@ api:
     senderName:
     ## The address of the email sender. Must match the "From Email Address" field of the email sender.
     senderAddress:
+    ## If specified, the email comms consent API endpoint will be synchronized with this unsubscribe group.
+    commsConsentUnsubscribeGroup:
 
   ## Configure the emails themselves.
   emails:
@@ -1957,7 +2249,7 @@ api:
       nameOverride:
       ## If set to debug or lower, the sent emails and arguments are also logged to the console.
       logLevel: info
-      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.6.0
+      image: registry.gitlab.com/safesurfer/core/apps/mailbot:1.6.1
       ## Resources: if requests are specified the task may fail to schedule and emails are missed.
       ## the used resources are small and not taken up for very long.
       resources:
@@ -1996,61 +2288,90 @@ api:
       editableKeys: []
       ## e.g.:
       ## - key1
-    ## Apple provides a way to quickly set settings: For us we're interesting in the DNS settings.
-    ## The API provides an endpoint to generate these config files using the parameters here:
+    ## Apple provides a way to quickly set settings, including connecting to a Safe Surfer DOH deployment
+    ## and configuring browsers according to the settings defined here. Browser extensions can be blocked
+    ## per-category after being added in the admin app.
+    ## Also see the `strings` section which templates the readable text sections of the mobileconfig file
+    ## that the user will see when installing it.
+    ## Any number of profiles can be defined. It is up to the frontend to request the right profile for the
+    ## kind of device being configured.
+    ## Setting any section of each profile to null turns it off, and defining the unique identifier turns it on.
     appleMobileConfig:
-      ## A comma-separated string of the IP address to use for DOH.
-      dohAddresses:
-      ## The host for DOH, e.g. doh.safesurfer.io
-      dohHost:
-      ## The description for the config (shows on the apple UI)
-      description:
-      ## The name of the config (shows on the apple UI)
-      name:
-      ## Provision settings for third-party browsers so that they work by default,
-      ## as well as disabling workarounds.
-      ## Safari follows the system settings so already works by default.
-      extraSettings:
-        ## Brave settings to disable VPN, use system DOH settings, and disable Tor.
-        braveStable: false
-        braveBeta: false
-        braveNightly: false
-        ## Chrome settings to use system DOH settings.
-        chrome: false
-        ## Edge settings to use system DOH settings and disable new tab content.
-        edge: false
-        ## Vivaldi settings to use system DOH settings.
-        vivaldi: false
-        ## Chromium settings to use system DOH settings.
-        chromium: false
-        ## Firefox settings to use system DOH settings.
-        firefox: false
-        ## Yandex settings to use system DOH settings.
-        yandex: false
-      ## Identifiers for various parts of the payload.
-      identifiers:
-        ## For the whole payload.
-        payload:
-        ## For the DNSSettings.
-        dnsSettings:
-        ## For the Brave browser stable settings, if enabled.
-        braveStable:
-        ## For the Brave browser beta settings, if enabled.
-        braveBeta:
-        ## For the Brave browser nightly settings, if enabled.
-        braveNightly:
-        ## For the Chrome browser settings, if enabled.
-        chrome:
-        ## For the Edge browser settings, if enabled.
-        edge:
-        ## For the Vivaldi browser settings, if enabled.
-        vivaldi:
-        ## For the Chromium browser settings, if enabled.
-        chromium:
-        ## For the Firefox browser settings, if enabeld.
-        firefox:
-        ## For the Yandex browser settings, if enabled.
-        yandex:
+      iOs:
+        identifier: io.safesurfer.profile
+        doh: null
+          # identifier: io.safesurfer.dnsSettings
+          # addresses: [] # list of IP addresses where host is located
+          # host: # e.g. doh.safesurfer.io
+        appleBooks: null
+          # identifier: io.safesurfer.appleBooks
+      iOsSupervised:
+        identifier: io.safesurfer.profile.supervised
+        removalPassword:
+          identifier: io.safesurfer.removalPassword
+        restrictions:
+          identifier: io.safesurfer.restrictions
+          disableCloudPrivateRelay: true
+          disableVpnCreation: true
+        doh: null
+          # identifier: io.safesurfer.dnsSettings
+          # addresses: [] # list of IP addresses where host is located
+          # host: # e.g. doh.safesurfer.io
+          # prohibitDisablement: true
+        appleBooks: null
+          # identifier: io.safesurfer.appleBooks
+      iOsSupervisedDisableFactoryReset:
+        identifier: io.safesurfer.profile.supervised
+        removalPassword:
+          identifier: io.safesurfer.removalPassword
+        restrictions:
+          identifier: io.safesurfer.restrictions
+          disableCloudPrivateRelay: true
+          disableVpnCreation: true
+          disableFactoryReset: true
+        doh: null
+          # identifier: io.safesurfer.dnsSettings
+          # addresses: [] # list of IP addresses where host is located
+          # host: # e.g. doh.safesurfer.io
+          # prohibitDisablement: true
+        appleBooks: null
+          # identifier: io.safesurfer.appleBooks
+      macOs:
+        identifier: io.safesurfer.profile
+        doh: null
+          # identifier: io.safesurfer.dnsSettings
+          # addresses: [] # list of IP addresses where host is located
+          # host: # e.g. doh.safesurfer.io
+        appleBooks: null
+          # identifier: io.safesurfer.appleBooks
+        braveBrowser: null
+          # identifier: io.safesurfer.bravestablesettings
+        braveBrowserBeta: null
+          # identifier: io.safesurfer.bravebetasettings
+        braveBrowserNightly: null
+          # identifier: io.safesurfer.bravenightlysettings
+        googleChrome: null
+          # identifier: io.safesurfer.chromesettings
+        microsoftEdge: null
+          # identifier: io.safesurfer.edgesettings
+        vivaldiBrowser: null
+          # identifier: io.safesurfer.vivaldisettings
+        arcBrowser: null
+          # identifier: io.safesurfer.arcsettings
+        waterfoxBrowser: null
+          # identifier: io.safesurfer.waterfoxsettings
+        chromiumBrowser: null
+          # identifier: io.safesurfer.chromiumsettings
+        thoriumBrowser: null
+          # identifier: io.safesurfer.thoriumsettings
+        firefoxBrowser: null
+          # identifier: io.safesurfer.firefoxsettings
+        floorpBrowser: null
+          # identifier: io.safesurfer.floorpsettings
+        libreWolfBrowser: null
+          # identifier: io.safesurfer.librewolfsettings
+        yandexBrowser: null
+          # identifier: io.safesurfer.yandexsettings
 
   ## Notification configuration: Notifications are delivered via web push for certain events.
   notifications:
@@ -2088,7 +2409,7 @@ api:
   dailyCleanup:
     enabled: true
     ## Image to use
-    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.2.0
+    image: registry.gitlab.com/safesurfer/core/apps/daily-cleanup:1.3.0
     ## The max amount of open/idle connections to use when connecting to the database.
     ## Setting these to 0 uses the default values, which are currently 2 and unlimited
     ## respectively but may change in the future.
@@ -2140,9 +2461,11 @@ api:
     #       usage_insights_blocked_site_count: 'Sites Blocked'
     #       usage_insights_blocked_site_count_description: 'How many sites have been blocked over the time period.'
     #       usage_insights_general_group_name: 'General'
+    #       category_option_no_filtering: 'No filtering'
+    #       category_option_blocked: 'Blocked'
     #       unknown_category_name: 'General'
     #       usage_unknown_category_description: "Sites that haven't been classified yet."
-    #       notifications_initial_notification_title: 'Example Notification'
+    #       notifications_initial_notification_title: 'This is an example notification.'
     #       security_alerts_adversary_simulation_title: 'Adversary Simulation'
     #       security_alerts_adversary_simulation_description: Adversary simulation traffic to a benign destination.
     #       security_alerts_alternate_dns_title: 'Alternate Dns'
@@ -2252,8 +2575,8 @@ api:
     #       approval_email_text: 'You can now log in to the dashboard to control your filtering settings and view browsing history for your account.'
     #       approval_email_button_text: 'Log in'
     #       approval_email_link: ''
-    #       otp_email_subject: 'Your signin code'
-    #       otp_email_title: 'Your Signin Code'
+    #       otp_email_subject: 'Your BRAND_NAME sign-in code'
+    #       otp_email_title: 'Your BRAND_NAME sign-in code'
     #       otp_email_text: "Use this code to sign in to BRAND_NAME. If you didn't try to sign in to BRAND_NAME, someone may be trying to access your account."
     #       verify_email_subject: 'Verify Account'
     #       verify_email_title: 'Verify Account'
@@ -2271,6 +2594,13 @@ api:
     #       password_reset_email_title: 'Reset Password'
     #       password_reset_email_text: "If you made a request to reset your password, click the link below and enter a new one. If you didn't request a password reset, please ignore this email."
     #       password_reset_email_button_text: 'Reset Password'
+    #       apple_mobileconfig_display_name: 'BRAND_NAME'
+    #       apple_mobileconfig_description: 'BRAND_NAME description.'
+    #       apple_mobileconfig_apple_books_display_name: 'Restrictions'
+    #       apple_mobileconfig_apple_books_description: 'Configures restrictions'
+    #       apple_mobileconfig_doh_display_name: 'BRAND_NAME'
+    #       apple_mobileconfig_doh_description: 'Installs BRAND_NAME with an encrypted DNS link'
+    #       apple_mobileconfig_filename: 'BRAND_NAME.mobileconfig'
     #     templates:
     #       chargebee_price:
     #       - field: currencySymbol
@@ -2389,20 +2719,22 @@ api:
     #       - field: count
     #       - text: ' times.'
     #       logged_notification_alert_display:
+    #       - text: 'Text/Social Media alert for '
     #       - field: device
-    #       - text: ' got notification: '
+    #       - text: ' - '
     #       - field: notification
     #         truncateTo: 30
     #         appendIfTruncated: '...'
     #       logged_notification_alert_summary_display:
+    #       - text: 'Text/Social Media alert for '
     #       - field: device
-    #       - text: ' got notification: '
+    #       - text: ' - '
     #       - field: notification
     #         truncateTo: 30
     #         appendIfTruncated: '...'
-    #       - text: ' '
+    #       - text: ' ('
     #       - field: count
-    #       - text: ' times.'
+    #       - text: ')'
     #       no_activity_alert_display:
     #       - text: 'No recent activity for '
     #       - field: device
@@ -2460,7 +2792,7 @@ categorizer:
     ## The amount of categorizer instances. Overridden by the HPA if created.
     replicas: 1
     ## The image to use for the categorizer
-    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.23.0
+    image: registry.gitlab.com/safesurfer/core/apps/admin-app:5.24.1
     ## The max amount of open/idle connections to use when connecting to the database.
     ## Setting these to 0 uses the default values, which are currently 2 and unlimited
     ## respectively but may change in the future.
@@ -2917,7 +3249,7 @@ db:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## The current schema version. The argument is an image that runs migrations against the database.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.7.0
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/migrations:1.9.0
   ## Configure an external database connection, see above.
   external:
     ## Whether to use an external database. Either this or the in-cluster database must be enabled.
@@ -3089,7 +3421,7 @@ healthChecks:
   ## unavailable, but this deployment can be used to check external use for alerting or
   ## reporting purposes.
   enabled: false
-  image: registry.gitlab.com/safesurfer/core/apps/status:1.1.0
+  image: registry.gitlab.com/safesurfer/core/apps/status:1.1.1
   ## How much to log. Info messages are logged when a health check is run or on startup.
   ## Warnings are logged when a health check fails. Panics are logged for unexpected errors.
   ## If you set health checks to run every second with "* * * * * *", the info level
@@ -3469,7 +3801,7 @@ clickhouse:
   ## Specify a custom name, otherwise it's based on the name of the release
   nameOverride:
   ## A container to bring up the schema of the instance. This is effectively the schema version of the clickhouse instance.
-  schemaVersion: registry.gitlab.com/safesurfer/core/apps/clickhouse-config:1.0.1
+  schemaVersion: registry.gitlab.com/safesurfer/core/apps/clickhouse-config:2.0.0
   ## External hosting
   external:
     enabled: false
@@ -3523,7 +3855,7 @@ frontend:
   ## The amount of replicas to deploy. Overridden by the hpa if enabled.
   replicas: 2
   ## The container image to use.
-  image: registry.gitlab.com/safesurfer/dashboard:1.4.0
+  image: registry.gitlab.com/safesurfer/dashboard:2.0.2
   ## Image pull secret to use, if the image is private.
   imagePullSecret:
     # registry:
@@ -3615,8 +3947,9 @@ blockpage:
   enabled: false
   ## Whether the blockpage should be enabled for *users* by default. If false, users will get NXDOMAIN as
   ## a response when a domain is blocked rather than the domain of the block page.
-  ## This settings affects both the API (if enabled), and the DNS (if enabled). Therefore, if you have
-  ## multiple DNS clusters, this setting needs to be updated in each.
+  ## This settings affects the API (if enabled), the DNS (if enabled), and LMDB feed (if enabled).
+  ## Therefore, you should edit this setting in any cluster with these deployments enabled.
+  ## If DNS is enabled in a cluster but connected to LMDB feed, the setting will have no effect on the DNS.
   enabledForUsersByDefault: true
   ## The domain of the blockpage. This may be specified without enabling the block page in this cluster to
   ## host the block page somewhere else. If hosted in this cluster, must be pointed at the right IP after deployment.
@@ -3695,6 +4028,17 @@ protocolchecker:
     doh: doh
     dot: dot
     router: router
+    ## The id field can be used to determine, from a user's perspective, which
+    ## server or server cluster they are connected to by giving it a different
+    ## value for each deployment.
+    id: default
+    ## The tokenMatch protocol subdomain can be used to determine whether the user's
+    ## current device is configured with a matching DNS token. For example, if `base`
+    ## is `proto.safesurfer.io`,
+    ## requesting `https://b88eb0fc-4a3f-4c8c-ba44-e7a012385835.token.proto.safesurfer.io`
+    ## would succeed if and only if the user's current DNS configuration is using
+    ## that DNS token.
+    tokenMatch: token
   ## Name of the ingress class to use. This should be a https://kubernetes.github.io/ingress-nginx
   ## instance.
   ingressClass: nginx

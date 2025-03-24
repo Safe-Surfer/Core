@@ -4,10 +4,14 @@
   securityContext:
     {{- toYaml .Values.dns.doh.securityContext | nindent 4 }}
   imagePullPolicy: IfNotPresent
+  {{- range $idx, $_ := .Values.dns.doh.tls }}
   volumeMounts:
-  - name: doh-certs
-    mountPath: "/ssl"
+  - name: doh-certs-{{ $idx }}
+    mountPath: "/ssl/{{ $idx }}"
     readOnly: true
+  {{- else }}
+  {{ fail "No DOH cert provided" }}
+  {{- end }}
   ports:
     - name: doh
       containerPort: {{ .Values.dns.doh.bindPort }}
@@ -51,10 +55,10 @@
       value: {{ .Values.protocolchecker.domains.doh }}.{{ .Values.protocolchecker.domains.base }}
     - name: SS_PROTO_QUERY_ACTIVE_DOMAIN
       value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
-    - name: CERT_FILE
-      value: /ssl/tls.crt
-    - name: KEY_FILE
-      value: /ssl/tls.key
+    - name: APP_CERT_FILES
+      value: '{{- range $idx, $_ := .Values.dns.doh.tls }}/ssl/{{ $idx }}/tls.crt,{{- end }}'
+    - name: APP_KEY_FILES
+      value: '{{- range $idx, $_ := .Values.dns.doh.tls }}/ssl/{{ $idx }}/tls.key,{{- end }}'
     - name: APP_MAX_TCP_CONNS
       value: {{ .Values.dns.doh.tcpConns | int | quote }}
     - name: APP_MAX_ATTEMPTS

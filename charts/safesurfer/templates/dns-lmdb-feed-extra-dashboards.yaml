@@ -1,0 +1,11 @@
+{{- if .Values.monitoring.enabled }}
+{{- if .Values.dns.enabled }}
+{{- $values := .Values }}
+{{- $release := .Release }}
+{{- $chart := .Chart }}
+{{- range $spec := .Values.dns.lmdbFeed.extraInstances }}
+{{- if $spec.enabled }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

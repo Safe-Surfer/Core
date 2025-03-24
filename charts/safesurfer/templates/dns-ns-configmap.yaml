@@ -184,6 +184,24 @@ data:
           proto: tcp
           domain: {{ .Values.dns.dns.healthCheck.testDomain }}
           timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+    {{- if .Values.dns.doh.sidecar }}
+    - name: doh
+      healthChecks:
+      - type: HTTP
+        spec:
+          url: http://localhost:8888
+          method: GET
+          timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+    {{- end }}
+    {{- if .Values.dns.dot.sidecar }}
+    - name: dot
+      healthChecks:
+      - type: HTTP
+        spec:
+          url: http://localhost:8889
+          method: GET
+          timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+    {{- end }}
     {{- if .Values.dns.dns.sidecarContainers.healthCheck.customTargets }}
     {{ toYaml .Values.dns.dns.sidecarContainers.healthCheck.customTargets | nindent 4 }}
     {{- end }}

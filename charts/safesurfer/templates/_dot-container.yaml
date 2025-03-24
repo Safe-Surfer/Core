@@ -3,10 +3,14 @@
   image: {{ .Values.dns.dot.image }}
   securityContext:
     {{- toYaml .Values.dns.dot.securityContext | nindent 4 }}
+  {{- range $idx, $_ := .Values.dns.dot.tls }}
   volumeMounts:
-  - name: dot-certs
-    mountPath: "/ssl"
-    readOnly: true
+    - name: dot-certs-{{ $idx }}
+      mountPath: "/ssl/{{ $idx }}"
+      readOnly: true
+  {{- else }}
+  {{ fail "No DOT cert provided" }}
+  {{- end }}
   ports:
     - name: dot-tcp
       containerPort: {{ .Values.dns.dot.bindPort }}
@@ -50,10 +54,10 @@
       value: {{ .Values.protocolchecker.domains.dot }}.{{ .Values.protocolchecker.domains.base }}
     - name: SS_PROTO_QUERY_ACTIVE_DOMAIN
       value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
-    - name: CERT_FILE
-      value: /ssl/tls.crt
-    - name: KEY_FILE
-      value: /ssl/tls.key
+    - name: APP_CERT_FILES
+      value: '{{- range $idx, $_ := .Values.dns.dot.tls }}/ssl/{{ $idx }}/tls.crt,{{- end }}'
+    - name: APP_KEY_FILES
+      value: '{{- range $idx, $_ := .Values.dns.dot.tls }}/ssl/{{ $idx }}/tls.key,{{- end }}'
     - name: APP_TLS_MAX_IDLE_KEEPALIVE
       value: {{ .Values.dns.dot.maxIdleKeepalive }}
     - name: APP_TLS_WRITE_TIMEOUT

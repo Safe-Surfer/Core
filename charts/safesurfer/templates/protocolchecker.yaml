@@ -25,7 +25,7 @@ data:
 #
 # Cert and cluster issuer
 #
-{{ include "cert" (dict "cert" .Values.protocolchecker.tls "noHttpSupport" true "Release" .Release "name" (include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride)) "namespace" "protocol-checker" "dnsNames" (list (printf "*.%s" .Values.protocolchecker.domains.base)) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.protocolchecker.tls "noHttpSupport" true "Release" .Release "name" (include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride)) "namespace" "protocol-checker" "dnsNames" (list (printf "*.%s" .Values.protocolchecker.domains.base) (printf "*.%s.%s" .Values.protocolchecker.domains.tokenMatch .Values.protocolchecker.domains.base)) "Values" .Values) }}
 ---
 #
 # Deployment
@@ -204,6 +204,15 @@ spec:
     {{- else }}
     secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
     {{- end }}
+  - hosts:
+      - '*.{{ .Values.protocolchecker.domains.tokenMatch }}.{{ .Values.protocolchecker.domains.base }}'
+    {{- if .Values.protocolchecker.tls.secretName }}
+    secretName: {{ .Values.protocolchecker.tls.secretName }}
+    {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+    secretName: letsencrypt-prod-protocol-checker
+    {{- else }}
+    secretName: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-cert
+    {{- end }}
   rules:
   # Route each host to the same backend service
   - host: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
@@ -257,6 +266,16 @@ spec:
             port:
               number: 8080
   - host: {{ .Values.protocolchecker.domains.router }}.{{ .Values.protocolchecker.domains.base }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-service
+            port:
+              number: 8080
+  - host: '*.{{ .Values.protocolchecker.domains.tokenMatch }}.{{ .Values.protocolchecker.domains.base }}'
     http:
       paths:
       - path: /

@@ -41,7 +41,7 @@ The `ss-config` values only support `custom` as a cert option, but they also sup
 dns:
   doh:
     tls:
-      custom:
+    - custom:
         cert:
         key:
     # Comment out to disable cert sync
@@ -52,7 +52,7 @@ dns:
       schedule: '*-*-* 4:00:00'
   dot:
     tls:
-      custom:
+    - custom:
         cert:
         key:
     # Comment out to disable cert sync
@@ -160,33 +160,63 @@ You can test DOH on Apple devices by configuring the `.mobileconfig` file downlo
 api:
   devices:
     appleMobileConfig:
-      dohAddresses: xx.xx.xx.xx
-      dohHost: secure-dns.ss.example.com
-      description: Use DNS filtering and logging
-      name: Secure DNS
-      extraSettings:
-        # Make browsers use it by default
-        braveStable: true
-        braveBeta: true
-        braveNightly: true
-        chrome: true
-        edge: true
-        vivaldi: true
-        chromium: true
-        firefox: true
-        yandex: true
-      identifiers:
-        payload: com.example.profile
-        dnsSettings: com.example.profile.dnsSettings
-        braveStable: com.example.profile.bravestablesettings
-        braveBeta: com.example.profile.bravebetasettings
-        braveNightly: com.example.profile.bravenightlysettings
-        chrome: com.example.profile.chromesettings
-        edge: com.example.profile.edgesettings
-        vivaldi: com.example.profile.vivaldisettings
-        chromium: com.example.profile.chromiumsettings
-        firefox: com.example.profile.firefoxsettings
-        yandex: com.example.profile.yandexsettings
+      iOs:
+        identifier: com.example.profile.profile
+        doh:
+          identifier: com.example.profile.dnsSettings
+          addresses:
+          - 'xx.xx.xx.xx'
+          - 'xx.xx.xx.xx'
+          host: secure-dns.ss.example.com
+        appleBooks:
+          identifier: com.example.profile.applicationaccess
+      macOs:
+        identifier: com.example.profile
+        doh:
+          identifier: com.example.profile.dnsSettings
+          addresses:
+          - 'xx.xx.xx.xx'
+          - 'xx.xx.xx.xx'
+          host: secure-dns.ss.example.com
+        appleBooks:
+          identifier: com.example.profile.applicationaccess
+        braveBrowser:
+          identifier: com.example.profile.bravestablesettings
+        braveBrowserBeta:
+          identifier: com.example.profile.bravebetasettings
+        braveBrowserNightly:
+          identifier: com.example.profile.bravenightlysettings
+        googleChrome:
+          identifier: com.example.profile.chromesettings
+        microsoftEdge:
+          identifier: com.example.profile.edgesettings
+        vivaldiBrowser:
+          identifier: com.example.profile.vivaldisettings
+        arcBrowser:
+          identifier: com.example.profile.arcsettings
+        waterfoxBrowser:
+          identifier: com.example.profile.waterfoxsettings
+        chromiumBrowser:
+          identifier: com.example.profile.chromiumsettings
+        thoriumBrowser:
+          identifier: com.example.profile.thoriumsettings
+        firefoxBrowser:
+          identifier: com.example.profile.firefoxsettings
+        floorpBrowser:
+          identifier: com.example.profile.floorpsettings
+        libreWolfBrowser:
+          identifier: com.example.profile.librewolfsettings
+        yandexBrowser:
+          identifier: com.example.profile.yandexsettings
+  strings:
+    langs:
+      en:
+        strings:
+          apple_mobileconfig_display_name: 'Secure DNS'
+          apple_mobileconfig_description: 'Use DNS filtering and logging, as well as other settings to make browsers use and enforce this filtering.'
+          apple_mobileconfig_doh_display_name: 'Secure DNS'
+          apple_mobileconfig_doh_description: 'Installs an encrypted DNS link'
+          apple_mobileconfig_filename: 'DNS.mobileconfig'
 ```
 
 > **Warning**
