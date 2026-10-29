@@ -1,3 +1,0 @@
-{{- define "newDomainNotifierCrawlConfig" }}
-{{- toYaml .Values.dns.newDomainNotifier.addConfig.crawling.config }}
-{{- end }}

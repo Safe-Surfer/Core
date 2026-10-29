@@ -31,13 +31,13 @@ spec:
       targetPort: {{ .Values.dns.dns.bindPort }}
       protocol: TCP
       name: tcp
-    {{- if and .Values.dns.doh.enabled .Values.dns.doh.sidecar }}
+    {{- if .Values.dns.doh.enabled }}
     - port: 443
       targetPort: {{ .Values.dns.doh.bindPort }}
       protocol: TCP
       name: https
     {{- end }}
-    {{- if and .Values.dns.dot.enabled .Values.dns.dot.sidecar }}
+    {{- if .Values.dns.dot.enabled }}
     - port: 853
       targetPort: {{ .Values.dns.dot.bindPort }}
       protocol: TCP

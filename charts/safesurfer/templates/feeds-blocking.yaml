@@ -1,0 +1,276 @@
+{{- if .Values.feeds.blocking.default.enabled }}
+# The custom storage class, if enabled.
+{{- if and .Values.feeds.blocking.default.persistence.enabled .Values.feeds.blocking.default.persistence.storageClass }}
+---
+{{ toYaml .Values.feeds.blocking.default.persistence.enabled .Values.feeds.blocking.default.persistence.storageClass }}
+{{- end}}
+# The PVC, if enabled.
+{{- if .Values.feeds.blocking.default.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.feeds.blocking.default.persistence.size }}
+  {{- if .Values.feeds.blocking.default.persistence.storageClassName }}
+  storageClassName: {{ .Values.feeds.blocking.default.persistence.storageClassName }}
+  {{- else if .Values.feeds.blocking.default.persistence.storageClass.metadata.name }}
+  storageClassName: {{ .Values.feeds.blocking.default.persistence.storageClass.metadata.name }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}-auth
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  username: {{ .Values.feeds.blocking.default.username | b64enc | quote }}
+  password: {{ required "abm feed password required" .Values.feeds.blocking.default.password | b64enc | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  replicas: 1
+  serviceName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+      {{- if .Values.feeds.blocking.default.lmdb }}
+      lmdb-feed: '1'
+      {{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+        {{- if .Values.feeds.blocking.default.lmdb }}
+        lmdb-feed: '1'
+        {{- end }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        #
+        # Ensure rolling deployments when mounted secrets change.
+        #
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        checksum/username: {{ .Values.feeds.blocking.default.username | sha256sum }}
+        checksum/password: {{ .Values.feeds.blocking.default.password | sha256sum }}
+        checksum/routes-config: {{ include (print $.Template.BasePath "/api-routes-configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        fsGroup: 250
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      volumes:
+      {{- if .Values.feeds.blocking.default.persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+      {{- end }}
+      - name: tmp
+        emptyDir: {}
+      - name: routes-config
+        configMap:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          name: routes-config
+          {{- else }}
+          name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-routes-config
+          {{- end }}
+          optional: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+        image: {{ .Values.feeds.blocking.default.image }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        {{- if .Values.feeds.blocking.default.persistence.enabled }}
+        - name: data
+          mountPath: /data/lmdb
+        {{- end }}
+        - name: tmp
+          mountPath: /tmp
+        - name: routes-config
+          mountPath: /var/safesurfer/config/routes-config.yaml
+          subPath: routes-config.yaml
+        ports:
+        - name: abm-feed
+          containerPort: {{ .Values.feeds.blocking.default.port }}
+          protocol: TCP
+        env:
+          {{ include "loggingEnvs" (dict "level" .Values.feeds.blocking.default.logLevel) | indent 10 }}
+          {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_PORT
+            value: {{ .Values.feeds.blocking.default.port | int | quote }}
+          - name: APP_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}-auth
+                key: username
+          - name: APP_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}-auth
+                key: password
+          - name: APP_ENABLE_LMDB
+            value: {{ .Values.feeds.blocking.default.lmdb | quote }}
+          - name: APP_PERSISTENT
+            value: {{ .Values.feeds.blocking.default.persistence.enabled | quote }}
+          - name: APP_PG_MAX_IDLE_CONNS
+            value: {{ .Values.feeds.blocking.default.maxIdleConns | int | quote }}
+          - name: APP_PG_MAX_OPEN_CONNS
+            value: {{ .Values.feeds.blocking.default.maxOpenConns | int | quote }}
+          - name: APP_LMDB_FEED_PORT
+            value: {{ .Values.feeds.blocking.default.port | int | quote }}
+          {{- if .Values.feeds.blocking.default.persistence.enabled }}
+          - name: APP_BASE_DIR
+            value: /data/lmdb/blocking
+          {{- else }}
+          - name: APP_BASE_DIR
+            value: /tmp/lmdb/blocking
+          {{- end }}
+          - name: APP_BUFFER_SIZE
+            value: {{ .Values.feeds.blocking.default.batchHistoryLength | int | quote }}
+          - name: APP_BLOCKING_FEED_MAP_SIZE
+            value: {{ .Values.feeds.blocking.default.mapSize }}
+          - name: APP_MAX_WAITING_BATCHES
+            value: {{ .Values.feeds.blocking.default.batchBufferSize | int | quote }}
+          - name: APP_MAX_BATCH_DURATION
+            value: {{ .Values.feeds.blocking.default.maxBatchDuration }}
+          - name: APP_MAX_RECV_SIZE
+            value: {{ .Values.feeds.blocking.default.maxBatchSize | quote }}
+          - name: APP_MAX_BATCH_SIZE
+            value: {{ .Values.feeds.blocking.default.liveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_BATCH_DELAY
+            value: {{ .Values.feeds.blocking.default.liveUpdateMaxDelay | quote }}
+          - name: APP_FULL_REBUILD_INTERVAL
+            value: {{ .Values.feeds.blocking.default.fullRebuildInterval | quote }}
+          - name: APP_MAX_LISTENER_RETAIN
+            value: {{ .Values.feeds.blocking.default.maxListenerRetainDuration }}
+          - name: APP_ABM_PG_ITER_SIZE
+            value: {{ .Values.feeds.blocking.default.iterSize | int | quote }}
+          - name: APP_MAX_CONCURRENT_LIVE_UPDATES
+            value: {{ .Values.feeds.blocking.default.maxConcurrentLiveUpdates | int | quote }}
+          - name: APP_API_CONFIG
+            value: /var/safesurfer/config/routes-config.yaml
+          - name: APP_SUB_FEED_MESSAGE_TIMEOUT
+            value: 1m
+          {{- if .Values.feeds.blocking.default.persistence.enabled }}
+          - name: APP_QUOTAS_DB
+            value: /data/lmdb/lastupdated
+          - name: APP_SUB_FEED_PATH
+            value: /data/lmdb/subscriptions
+          {{- else }}
+          - name: APP_QUOTAS_DB
+            value: /tmp/lmdb/lastupdated
+          - name: APP_SUB_FEED_PATH
+            value: /tmp/lmdb/subscriptions
+          {{- end }}
+          - name: APP_QUOTAS_DB_MAP_SIZE
+            value: {{ .Values.feeds.blocking.default.lastUpdateMapSize }}
+          - name: APP_SUB_FEED_MAX_RECV_SIZE
+            value: {{ .Values.feeds.blocking.default.subFeedMaxRecvSize }}
+          - name: APP_SUB_FEED_HOST
+            value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.subscription.default.service.port }}
+          - name: APP_SUB_FEED_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                key: username
+          - name: APP_SUB_FEED_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                key: password
+          - name: APP_POST_FULL_REBUILD_UPDATE_BATCH_SIZE
+            value: {{ .Values.feeds.blocking.default.liveUpdateMaxBatchSize | int | quote }}
+          - name: APP_SUBSCRIPTION_FEED_MAP_SIZE
+            value: {{ .Values.feeds.subscription.default.mapSize }}
+          - name: APP_FULL_REBUILD_WINDOW
+            value: '0'
+          - name: APP_INIT_LIMIT
+            value: {{ .Values.feeds.blocking.default.initLimit | int | quote }}
+          - name: APP_LISTENER_TIMEOUT
+            value: {{ .Values.feeds.blocking.default.listenerTimeout }}
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 2
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Values.feeds.blocking.default.port }}
+        livenessProbe:
+          failureThreshold: 2
+          initialDelaySeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Values.feeds.blocking.default.port }}
+        resources:
+          {{- toYaml .Values.feeds.blocking.default.resources | nindent 10 }}
+---
+# The service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- if .Values.feeds.blocking.default.service.isGCPNEG }}
+    cloud.google.com/neg: '{"exposed_ports": {"{{ .Values.feeds.blocking.default.service.port }}":{}}}'
+    {{- end }}
+    {{- with .Values.feeds.blocking.default.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - name: abm-feed
+    port: {{ .Values.feeds.blocking.default.service.port }}
+    protocol: TCP
+    targetPort: {{ .Values.feeds.blocking.default.port }}
+  type: {{ .Values.feeds.blocking.default.service.type }}
+  {{- if (or (eq .Values.feeds.blocking.default.service.type "LoadBalancer") (eq .Values.feeds.blocking.default.service.type "NodePort")) }}
+  externalTrafficPolicy: Local
+  {{- if .Values.feeds.blocking.default.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.feeds.blocking.default.service.loadBalancerIP }}
+  {{- end }}
+  {{- with .Values.feeds.blocking.default.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{ toYaml . | nindent 2 }}
+  {{- end }}
+  sessionAffinity: ClientIP
+  {{- end }}
+  externalIPs:
+{{- if .Values.feeds.blocking.default.service.externalIPs }}
+{{- with .Values.feeds.blocking.default.service.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+{{- end }}

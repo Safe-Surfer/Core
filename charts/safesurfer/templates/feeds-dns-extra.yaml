@@ -1,0 +1,6 @@
+{{- $values := .Values }}
+{{- $release := .Release }}
+{{- $chart := .Chart }}
+{{- range $spec := .Values.feeds.dns.extraInstances }}
+{{ include "dnsFeedSpec" (dict "Namespace" (include "ns" (dict "Values" $values "Release" $release "IndividualNamespace" $values.api.namespace)) "Name" (required "elements of feeds.dns.extraInstances must specify the `name` field" $spec.name) "Spec" $spec "Values" $values "Release" $release "Chart" $chart) }}
+{{- end }}

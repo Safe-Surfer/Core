@@ -1070,7 +1070,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "rate(container_cpu_usage_seconds_total{container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "range": true,
@@ -1082,7 +1082,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "range": true,
@@ -1094,7 +1094,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "range": true,
@@ -1194,7 +1194,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "rate(container_memory_usage_bytes{container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]) * 100",
+              "expr": "rate(container_memory_usage_bytes{container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}[5m]) * 100",
               "interval": "",
               "legendFormat": "{{ ` {{ pod }} ` }}",
               "range": true,
@@ -1206,7 +1206,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "range": true,
@@ -1218,7 +1218,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "range": true,
@@ -1257,7 +1257,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"} |~ \"(?i)(err|warn|fatal|panic)\"",
+              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"} |~ \"(?i)(err|warn|fatal|panic)\"",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -1295,7 +1295,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "lmdb-manager" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}",
+              "expr": "{container=\"{{ include "name" (dict "Release" .Release "name" "dns-feed" "nameOverride" .Values.dns.dns.sidecarContainers.lmdbManager.nameOverride) }}\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\"}",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"

@@ -4,9 +4,11 @@ This chart comes packaged with [Grafana](https://grafana.com/) dashboards that y
 ## Installing the tools
 See the [Monitoring Stack](https://gitlab.com/safesurfer/monitoring-stack) repo for how to install the tools. They may already be installed in your cluster, in which case you don't need to do anything.
 
+The Loki example in that repo sets `loki.persistence.storageClassName` to `faster`. Change that to a StorageClass that exists before installing. On kind the default class is `standard`, and a missing class leaves the Loki volume Pending. The Grafana and Loki charts currently print a deprecation warning; the releases still become Ready.
+
 ## Enabling the dashboards
 > **Warning**
-> With this setup, the monitoring tools are installed into the `monitoring` directory. The dashboards will also be installed into the `monitoring` directory, not the `--namespace` that you provide to Helm. You can change this behavior by leaving `monitoring.namespace` blank and deploying grafana to your release's namespace.
+> With this setup, the monitoring tools are installed into the `monitoring` namespace. The dashboards are installed into that same namespace, not the `--namespace` that you provide to Helm. You can change this behavior by leaving `monitoring.namespace` blank and deploying Grafana into your release's namespace.
 
 Add the following to your `values.yaml`:
 
@@ -24,15 +26,19 @@ helm upgrade "safesurfer" "safesurfer/safesurfer" -f values.yaml
 
 Grafana should now be loaded with the dashboards. The instructions linked above show how to access grafana using port-forwarding, but you can also enable an ingress for convenience under `monitoring.ingress`. See [ingress and cert setup](./ingress-and-cert-setup.md) for more details.
 
-After accessing Grafana through either method, you should now see a few useful dashboards in the `General` folder:
+The chart does not install Grafana. It writes one ConfigMap per enabled component into `monitoring.namespace` (or the release namespace when that is blank). The Grafana sidecar from the monitoring stack picks those up. Dashboard names follow the release, for example `safesurfer-dns` and `safesurfer-health-checks`. Enabling DNS, DoH, or DoT adds those dashboards. DoQ does not have one. The API dashboard set includes mailbot even when mailbot itself is disabled. The Kubernetes and Node Exporter dashboards in the picture below come from the monitoring stack, not from this chart.
+
+After accessing Grafana through either method, open Dashboards. The Safe Surfer dashboards are listed with the ones the monitoring stack installed (Kubernetes deployment metrics, Node Exporter, and Crewmate Jobs). They are in Grafana's default folder:
 
 ![](./img/grafana-1.png)
 
 The `safesurfer-` dashboards monitor the Safe Surfer deployments specifically, while the others added by Grafana are useful for monitoring the cluster in general.
 
-New dashboards are automatically added as you enable parts of the chart. For example, if you've enabled the DNS on kubernetes, the DNS dashboard will show some useful performance and resource usage information:
+New dashboards are automatically added as you enable parts of the chart. For example, if you've enabled the DNS on kubernetes, the DNS dashboard shows request rate, CPU, and memory for the recursor:
 
 ![](./img/grafana-2.png)
+
+The response-time panel further down that dashboard is the old `grafana-piechart-panel` plugin. The monitoring stack still sets `GF_INSTALL_PLUGINS=grafana-piechart-panel`. Current Grafana downloads that plugin and then refuses to load it, because Angular plugins are disabled, so the panel says No data. The `pdns_recursor_x_ourtime*` series are still in Prometheus. The other panels do not use that plugin.
 
 ### Troubleshooting
 - If you've deployed the monitoring stack to the monitoring namespace (as this example shows), the tls configuration may not work as you expect, since the ingress will also be created in the `monitoring` namespace. Therefore, you cannot reference a secret created in the release namespace.
@@ -67,7 +73,10 @@ healthChecks:
           port: 53 # 53 is default
           proto: udp # udp is default
           domain: internetbadguys.com # domain to look up
-          expectedIPs: # If specified, assert that certain IPs must be returned.
+          # Optional. Compared to the addresses LookupHost returns. A block that
+          # is only a CNAME, with no address, will not match an entry here.
+          # Leave this out to accept any successful lookup.
+          expectedIPs:
           - '0.0.0.0'
           timeout: 2s
       # Also test ipv6 - or comment out if you're not using ipv6
@@ -78,6 +87,8 @@ healthChecks:
           domain: google.com
           timeout: 5s
 ```
+
+An HTTP check fails when the response is not 2xx, including 401 and 404. A connection error or a timeout fails it as well. Point it at a URL that returns 200 when the service is up.
 
 Then, upgrade the deployment. You should now see the health checks pod:
 
@@ -90,7 +101,11 @@ There should also be a new Grafana dashboard named `safesurfer-health-checks`, w
 
 ![](./img/dashboard-38.png)
 
-To actually get alerted, we'll need to update our prometheus deployment. Create a file named `prometheus-values.yaml`, and adapt the following snippet. Prometheus doesn't alert you on its own, but can be configured to work with a large number of alerting providers. The `receivers` array is where you define this. For the possible configurations, see the [prometheus docs](https://prometheus.io/docs/alerting/latest/configuration/#receiver).
+The pod serves Prometheus metrics on port 2112. The two series are `ss_status_is_error` (1 when the target is unhealthy) and `ss_status_successive_errors`, both labeled with `target`. The Service port 80 is the status HTTP port, not the metrics port. Prometheus adds its own `job` label from the scrape config. With the prometheus-community chart the same pod is scraped twice: `job="kubernetes-service-endpoints"` (labeled `service`) and `job="kubernetes-pods"` (labeled `app`). The health-checks dashboard filters on `app`, so it reads the pod scrape. The rule below matches the endpoints scrape. Drop that matcher if your stack uses a different job name. The default rule group is evaluated once a minute, so the alert appears on the evaluation after the sixth failure, not at the moment of that failure. A series from a deleted pod stays in Prometheus until it goes stale, about five minutes, and can keep the alert firing after the live target is healthy again.
+
+To actually get alerted, we'll need to update our prometheus deployment. Add the following to the Prometheus values you already installed with, and upgrade with that same file. Prometheus doesn't alert you on its own, but can be configured to work with a large number of alerting providers. The `receivers` array is where you define this. For the possible configurations, see the [prometheus docs](https://prometheus.io/docs/alerting/latest/configuration/#receiver).
+
+The receiver in the snippet is commented out, and the route points at `safesurfer-team`. Alertmanager rejects that config with `undefined receiver "safesurfer-team" used in route`. Uncomment a receiver and fill in a real integration before upgrading. An upgrade that uses only this snippet, and not the monitoring-stack values, also replaces the release's other settings. The resource block below asks for 1500Mi; the monitoring stack's Prometheus values ask for 2500Mi and a 16Gi volume.
 
 ```yaml
 server:
@@ -109,7 +124,7 @@ serverFiles:
       # Alert for any target that is unhealthy 6 times in a row. This would equate to being down for a minute
       # if the health check runs every 10 seconds.
       - alert: TargetFrequentlyUnhealthy
-        expr: ss_status_successive_errors > 5
+        expr: ss_status_successive_errors{job="kubernetes-service-endpoints"} > 5
         for: 0m
         labels:
           severity: critical
@@ -141,7 +156,7 @@ alertmanager:
 
 ```
 
-Then upgrade your prometheus deployment. This depends on how you've deployed it, but according to the monitoring stack repo instructions it would be `helm -n monitoring upgrade prometheus prometheus-community/prometheus -f prometheus-values.yaml`.
+Then upgrade your prometheus deployment with the values file you added this to. According to the monitoring stack repo that is `helm -n monitoring upgrade prometheus prometheus-community/prometheus -f values.yaml`. With a webhook receiver pointed at a closed port, the alert still shows in Prometheus and Alertmanager, and Alertmanager logs that the notification was refused. A real receiver replaces that URL.
 
 To test our alerting system, we'll have to break something! Update your `values.yaml` to create a health check that won't succeed. For example, modify the URL/address; then upgrade the deployment. We should now see something like this on the Grafana health checks dashboard:
 
@@ -167,14 +182,20 @@ healthChecks:
         # Or other TLS config
 ```
 
-After the certificate and ingress are ready, you can query the current status of particular targets:
+Kind and other clusters without an ingress can skip that block. Enable `healthChecks.http` and port-forward the service instead:
+
+```sh
+kubectl port-forward svc/safesurfer-health-checks 8080:80
+```
+
+After the certificate and ingress are ready, or the port-forward is up, you can query the current status of particular targets:
 
 ```sh
 $ curl https://status.ss.example.com/healthy?target=api
 false
 ```
 
-This API will return true or false for whether the target is currently healthy. If unhealthy, it will return a status code of `500`, allowing it to be used in place of services that expect to query a URL directly. If healthy, it will return a status code of `200`. In the above example, it's unhealthy, because we've deliberately made is so in the previous example. If we update our health check to succeed again, we'll get a response like this:
+This API returns `true` or `false` for whether the target is currently healthy. An unhealthy target returns status `500`. A healthy target returns status `200`. An unknown target name returns `404` and the body `Bad target`. In the example above the target is unhealthy, because the previous step deliberately broke it. After the health check is pointed at a URL that returns 2xx again, the same query returns:
 
 ```sh
 $ curl https://status.ss.example.com/healthy?target=api
@@ -197,8 +218,9 @@ ROUTE="/v2/user/auth/token"
 NAMESPACE="default"
 # The name of your helm release
 RELEASE_NAME="safesurfer"
-# Unix timestamp of the earliest time you want to query. You will have to generate this.
-START_TIME=""
+# Nanoseconds since the epoch. Loki accepts a timestamp in seconds and then matches nothing.
+# One hour ago:
+START_TIME="$(($(date +%s) - 3600))000000000"
 # Max amount of logs to return. 5000 is the maximum you can query from loki by default.
 LIMIT="5000"
 ```
@@ -220,10 +242,10 @@ QUERY_PARAM=$(printf "{app=\"${RELEASE_NAME}-api\", namespace=\"${NAMESPACE}\"} 
 curl "http://localhost:3100/loki/api/v1/query_range?start=$START_TIME&limit=$LIMIT&query=$QUERY_PARAM" > /tmp/ss-query.json
 ```
 
-Then, generate a histogram of the results:
+Then, generate a histogram of the results. Each API line is a logrus record with `userIp=` set to the address the API attributed to the caller (`directIp=` is the immediate connection). The client address is not the last field on the line. A route that nothing has called returns an empty file. Leave `ROUTE` empty, or set it to a path that is in the logs.
 
 ```sh
-cat /tmp/ss-query.json | jq '.data.result[].values[][1]' | rev | cut -d ' ' -f1 | rev | sed 's/[\\"]//g' | sort | uniq -c
+jq -r '.data.result[].values[][1]' /tmp/ss-query.json | grep -oE 'userIp=[0-9a-fA-F.:]+' | cut -d= -f2 | sort | uniq -c
 ```
 
 The result will look something like this, where the number on the left is the amount of times the IP address requested that API endpoint:

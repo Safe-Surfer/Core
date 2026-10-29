@@ -286,7 +286,7 @@ spec:
 #
 # Issuer and cert.
 #
-{{ include "cert" (dict "cert" .Values.dns.ipsetd.internal.frontend.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.ipsetd.internal.frontend.http.ingress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.dns.ipsetd.internal.frontend.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.ipsetd.internal.frontend.http.ingress.host) "Values" .Values "ingressClass" .Values.dns.ipsetd.internal.frontend.http.ingress.class) }}
 ---
 #
 # Create the ingress.
@@ -296,11 +296,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "ipsetd" "nameOverride" .Values.dns.ipsetd.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  {{- with .Values.dns.ipsetd.internal.frontend.http.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    {{- if .Values.dns.ipsetd.internal.frontend.http.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.dns.ipsetd.internal.frontend.http.ingress.class }}
   tls:

@@ -1,0 +1,12 @@
+#
+# Cert and cluster issuer
+#
+{{- if .Values.dns.enabled }}
+{{- if .Values.dns.doq.enabled }}
+{{ $release := .Release }}
+{{ $values := .Values }}
+{{- range $idx, $cert := .Values.dns.doq.tls }}
+{{ include "cert" (dict "cert" $cert "noHttpSupport" true "Release" $release "name" (include "name" (dict "Release" $release "name" (printf "doq-%d" $idx) "nameOverride" $values.dns.doq.nameOverride)) "namespace" $values.dns.namespace "Values" $values) }}
+{{- end }}
+{{- end }}
+{{- end }}

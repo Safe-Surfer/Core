@@ -2,79 +2,47 @@
 A Kubernetes [ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) allows HTTP(s) traffic to reach the services in the cluster using a single external IP address. To run Safe Surfer in production, you may need to create one at some point.
 
 ## Ingress Controller
-This chart supports the Nginx ingress controller natively. If you have an existing cluster with a different ingress controller, that's ok. You can run multiple by proceeding with the rest of this guide, or choose to create your own ingress resources.
+This chart creates standard Kubernetes Ingress resources and is compatible with any ingress controller. Each ingress has a configurable `class` field and an `annotations` map, allowing you to use controller-specific annotations as needed.
 
-## Creating Your Own Ingress Resources
-If you choose to do this, you must just reference the services created by this chart in your manifests. You also need to ensure that `api.realIPHeader` and `categorizer.adminApp.realIPHeader` are configured with a header they can use to find the source IP of the user. Failing to configure this correctly can be a security concern. Also note that any `rateLimiting` parameters are implemented using the nginx ingress controller, so will not work when it's not being used. Parameters not named `rateLimiting`, e.g. `api.accounts.signonRateLimit` are not based on nginx and will work regardless.
+`api.realIPHeader` and `categorizer.adminApp.realIPHeader` default to `X-Forwarded-For`, which is the header Traefik sends. Leave them at that unless the proxy in front of the cluster uses a different header. A wrong header is a security problem when IP linking is on.
 
-## Installing Nginx Ingress Controller
-Nginx ingress controller is also distributed as a helm chart. Let's create a values file for it named `nginx-values.yaml`. Fill it with the following content to begin with:
-
-```yaml
-controller:
-  # Create a service, which will create a new external IP. You may be charged for this.
-  service:
-    enabled: true
-    externalTrafficPolicy: Local
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
-  # Autoscale from 1-10.
-  autoscaling:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
-  # Enable prometheus metrics.
-  metrics:
-    enabled: true
-  # Estimate resources, but don't apply limits yet.
-  resources:
-    requests:
-      cpu: 100m
-      memory: 90Mi
-  # Enable finding the source IP from the headers.
-  config:
-    use-forward-headers: "true"
-    compute-full-forward-for: "true"
-    # On AWS, use the following
-    # use-proxy-protocol: "true"
-  # Don't allow scheduling on the same node
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchExpressions:
-              - key: app.kubernetes.io/component
-                operator: In
-                values:
-                  - controller
-          topologyKey: "kubernetes.io/hostname"
-```
-
-Review the file and customize according to your needs - all configuration for nginx can be viewed on the ingress-nginx project [here](https://github.com/kubernetes/ingress-nginx/blob/main/charts/ingress-nginx/values.yaml).
-
-To install it, you can run the following commands:
-
-> **Note**
-> Newly created AWS EKS clusters may not have a load balancer controller installed. Follow the [instructions on AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html) to create one first. 
+## Example: Installing Traefik
+[Traefik](https://doc.traefik.io/traefik/) is the ingress controller used with this chart. Install it with Helm:
 
 ```sh
-helm repo add "ingress-nginx" "https://kubernetes.github.io/ingress-nginx"
-kubectl create namespace nginx-ingress
-helm install -n "nginx-ingress" "nginx-ingress" "ingress-nginx/ingress-nginx" -f nginx-values.yaml
+helm repo add traefik https://traefik.github.io/charts
+kubectl create namespace traefik
+helm install traefik traefik/traefik --namespace traefik
 ```
 
-Now run `kubectl -n nginx-ingress get svc` until it shows your new ingress IP:
+A release named `traefik` creates an IngressClass named `traefik`. Set each Safe Surfer ingress `class` or `ingressClass` to `traefik`. Run `kubectl -n traefik get svc` until the Service has an external IP.
 
+### Restricting source IPs
+The chart does not read `whitelistSourceRange`. To allow only some client addresses, add a Traefik [IP allow list](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/ipallowlist/) middleware with `customManifests`, then attach it to the ingress.
+
+The middleware reference is `<namespace>-<name>@kubernetescrd`. This example allows one address to the API. Put the middleware in the same namespace as the ingress.
+
+```yaml
+api:
+  ingress:
+    class: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.middlewares: default-api-ipallowlist@kubernetescrd
+customManifests:
+- apiVersion: traefik.io/v1alpha1
+  kind: Middleware
+  metadata:
+    name: api-ipallowlist
+    namespace: default
+  spec:
+    ipAllowList:
+      sourceRange:
+      - 203.0.113.10/32
 ```
-NAME                                               TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                      AGE
-nginx-ingress-ingress-nginx-controller             LoadBalancer   10.0.208.205   xx.xx.xx.xxx   80:32438/TCP,443:30185/TCP   55s
-nginx-ingress-ingress-nginx-controller-admission   ClusterIP      10.0.51.33     <none>         443/TCP                      55s
-nginx-ingress-ingress-nginx-controller-metrics     ClusterIP      10.0.187.54    <none>         10254/TCP                    55s
-```
+
+Several middlewares are separated by commas. A rate-limit middleware and an allow list look like this on the annotation: `default-api-ratelimit@kubernetescrd,default-api-ipallowlist@kubernetescrd`. `api.adminIngress` uses `api.ingress.class` and its own `annotations`. `dns.clickhoused.internal.frontend.http` uses `ingressClass` and `ingressAnnotations`.
+
+DNS feeds serve gRPC. Traefik does not serve that on a standard Ingress. Leave `feeds.dns.*.ingress.enabled` false and add an `IngressRoute` through `customManifests` with `scheme: h2c` and `tls.secretName` set to the certificate secret.
 
 At this point, it's recommended to decide on a domain to use for the Safe Surfer deployment. It can be a subdomain of your own domain, or whatever you wish. Then, create a wildcard DNS entry for any subdomains of that domain that points to your new external IP.
 
@@ -101,13 +69,16 @@ cert-manager-webhook-545bd5d7d8-7sd86     1/1     Running   0          14s
 This means cert-manager is ready to start generating certificates.
 
 ### HTTP01 method
-Enabling a certificate using HTTP01 validation is simple. Just add the following to the particular ingress definition:
+For an ingress whose `tls` object has `http01`, leave that field at its default `true` and leave `secretName` empty:
+
 ```yaml
 tls:
   http01: true
 ```
 
-It is also recommended to add an email for letsencrypt to contact using the following top-level configuration in the chart:
+`secretName` wins. If it is set, the chart does not create an HTTP01 issuer, even when `http01` is still `true`.
+
+Set the ingress `class` to `traefik`. The HTTP01 solver uses that class. Also set an email for Let's Encrypt:
 
 ```yaml
 certmanager:
@@ -115,9 +86,13 @@ certmanager:
     email: user@example.com
 ```
 
-`HTTP01` validation is not available for `dns.doh`, `dns.dot`, or `protocolchecker`. In the case of `doh`/`dot`, this is because they do not use an ingress. For the `protocolchecker`, it's because it must obtain certs for domains that don't exist on the public internet (out of necessity). You'll need to use one of the other methods for these deployments.
+The chart does not read `certmanager.letsencrypt.cloudflare`. DNS01 is configured with the manifests below, not with that key.
 
-`HTTP01` validation can also fail to work, or require more configuration, in non-standard environments with more restrictive permissions. This is because cert-manager might not have the permissions to create the pod required to solve the `HTTP01` challenge.
+On a single-namespace release the chart creates an `Issuer` named `<component>-cert` and a certificate secret of the same name. A deployment that sets `testFlags.legacyNames` creates a `ClusterIssuer` named `letsencrypt-prod-<component>` instead, because each component has its own namespace.
+
+`HTTP01` is not available for `dns.doh`, `dns.dot`, `dns.doq`, or `protocolchecker`. DoH, DoT, and DoQ terminate TLS in the DNS pod, and the chart marks those certificates `noHttpSupport`. The protocol checker needs names that are not on the public internet. Use a secret for those. The block page does not use this setting either. The chart always gives it a self-signed cert-manager `Issuer` for `blockpage.domain`.
+
+HTTP01 can also fail when cert-manager is not allowed to create the solver pod. DNS01 does not create that pod.
 
 ### Custom cert method
 You can supply a custom cert for any deployment like this:
@@ -138,15 +113,31 @@ tls:
 ```
 
 ### Secret name method
-Supply the name of the secret to use for any deployment like this:
+For an ingress, clickhoused HTTP, or the protocol checker, point `tls.secretName` at a secret that already contains `tls.crt` and `tls.key`:
 
 ```yaml
 tls:
-  http01: false
   secretName: my-tls-secret
 ```
 
-Note that the namespace of the deployment must match the namespace of the secret you wish to use.
+`protocolchecker.tls` has no `http01` field. `secretName` is enough there. The secret has to sit in the same namespace as the workload. A multi-namespace release needs one copy of the secret in each namespace that mounts it.
+
+DoH, DoT, and DoQ take a list, not the ingress `tls` object:
+
+```yaml
+dns:
+  doh:
+    tls:
+    - secretName: my-doh-secret
+  dot:
+    tls:
+    - secretName: my-dot-secret
+  doq:
+    tls:
+    - secretName: my-doq-secret
+```
+
+Creating the certificate secret does not attach it. The list entries above are what mount it into the DNS pod.
 
 ### Using the DNS01 challenge type
 [DNS01 validation](https://cert-manager.io/docs/configuration/acme/dns01/) with cert-manager has many advantages over HTTP01 validation:
@@ -154,7 +145,9 @@ Note that the namespace of the deployment must match the namespace of the secret
 - Does not require the domain to exist before the certificate can be created
 - Does not require an ingress to exist for the domain of the certificate
 
-However, it is also more difficult to configure, and the configuration is dependant on your authoritative DNS server. You can set up DNS01 validation by using the `secretName` method above and configuring cert-manager to create the secret with a matching name. You can also use the `customManifests` field of the chart values to keep all your resources in one place. Here is an example for if you were using cloudflare as the DNS server for the domain you're hosting Safe Surfer on:
+However, it is also more difficult to configure, and the configuration depends on your authoritative DNS server. Point `secretName` at the secret cert-manager will create. `customManifests` can hold the cert-manager objects in the same values file.
+
+For one namespace, use an `Issuer` and a `Certificate` in the release namespace. Keep the ACME account key (`privateKeySecretRef`) separate from the certificate secret. A token is enough for the Cloudflare solver. `email` on that solver is only for the older global API key.
 
 ```yaml
 customManifests:
@@ -162,8 +155,7 @@ customManifests:
   kind: Secret
   metadata:
     name: cloudflare-api-token-secret
-    # Ensure namespace matches that of the release's namespace
-    # namespace:
+    namespace: default
   type: Opaque
   stringData:
     api-token: <API Token>
@@ -171,15 +163,13 @@ customManifests:
   kind: Issuer
   metadata:
     name: example-issuer
-    # Ensure namespace matches that of the release's namespace
-    # namespace:
+    namespace: default
   spec:
     acme:
       server: https://acme-v02.api.letsencrypt.org/directory
-      preferredChain: 'ISRG Root X1'
       email: user@example.com
       privateKeySecretRef:
-        name: my-tls-secret
+        name: example-issuer-account
       solvers:
       - dns01:
           cloudflare:
@@ -193,8 +183,7 @@ customManifests:
   kind: Certificate
   metadata:
     name: example-cert
-    # Ensure namespace matches that of the release's namespace
-    # namespace:
+    namespace: default
   spec:
     secretName: my-tls-secret
     issuerRef:
@@ -205,6 +194,8 @@ customManifests:
     - '*.ss.example.com'
 ```
 
-This will create a secret named `my-tls-secret` which you can then reference in the `secretName` field of any `tls` object, like above. If any domains other than the wildcard are required, you can add them to the `dnsNames` list.
+Then set `tls.secretName` to `my-tls-secret`. Add any extra names to `dnsNames` on both the solver selector and the certificate.
 
-For the full list of supported authoritative DNS providers supported by cert manager and how to configure them, check [cert-manager docs](https://cert-manager.io/docs/configuration/acme/dns01/).
+When components run in more than one namespace, use a `ClusterIssuer` and one `Certificate` per namespace, each with the same `secretName` and `dnsNames`. The private deployment does this because `testFlags.legacyNames` gives each component its own namespace. The wildcard certificate is created once in the DNS namespace and again in the API namespace. DoH and the protocol checker get their own issuers, because their names are not covered by that wildcard. DoT can use another ACME server, such as DigiCert, with `externalAccountBinding` on the issuer. Store that key in a secret and do not put it in the guide.
+
+For the full list of authoritative DNS providers, see the [cert-manager docs](https://cert-manager.io/docs/configuration/acme/dns01/).

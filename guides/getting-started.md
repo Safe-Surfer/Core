@@ -130,6 +130,7 @@ Once the `migrations` pod has `Completed`, you're ready to start enabling other 
 
 #### Troubleshooting
 - To create the database, the kubernetes nodes must download a few container images. If the connection speed is low, it may take too long to create the database, which will cause the migrations pod to fail. In this case, you can wait for the database to create successfully, then deploy again using `helm upgrade "safesurfer" "safesurfer/safesurfer" -f values.yaml`.
+- The connection pooler is required. In-cluster apps use `safesurfer-db-pooler`, not the database pods. The first migrations pod can fail with `lookup safesurfer-db-pooler... no such host` if it starts before that Service exists. The job retries. Wait until a migrations pod is `Completed` and both pooler pods are `Running`.
 - If pods are stuck `Pending`, you may need to lower the resource requirements in your `values.yaml` further.
 
 ## Setting up the admin app
@@ -201,45 +202,66 @@ The admin app can be used to manage domains, categories, restrictions, IP addres
 - Create a category containing domains that will be blocked for everyone
 - Categorize some other (unblocked) sites.
 
-To begin, we will add a few categories. Navigate to the `Categories -> Categories` page on the side menu. It should look something like this:
+To begin, we will add a few categories. Navigate to the `Categories -> Categories` page on the side menu. The list already contains built-in categories, including `Unknown sites`.
 
 ![](img/categories-1.png)
 
-`Add` a new category. Enter the following details:
+Select `Add` and create `Adult Sites`:
+
+- Name: `Adult Sites`
+- Turn `Default Block` on
+- Turn `Display` on
+- Leave the other fields as they are. `Suggestions only (Autocat)` starts on.
+
+Turning `Display` on reveals `Parent`, `Icon`, `Custom SVG icon`, `Order`, `Collapse`, `Frozen`, and `Display Filter`. Leave those unset. `Logging visibility` stays `Default`.
 
 ![](img/categories-2.png)
 ![](img/categories-3.png)
 
-Select `Add`. Ensure you `Display` the category. Now add two more categories named `News` and `Search Engines`. You can leave all settings on their defaults for these, but `Display` them also. Your categories list should now look like this:
+Select `Add`. Add `News` and `Search Engines` the same way, with `Display` on and every other setting left as it is, so `Default Block` stays off. The list should show `Adult Sites` with default action `Block`, and `News` and `Search Engines` with default action `Allow`. All three have `Display` on.
 
 ![](img/categories-4.png)
 
-Now let's add some domains to the categories. Navigate to the `Domains -> Search` page and search for `exampleadultsite.com`.
+Now let's add some domains to the categories. Navigate to the `Domains -> Search` page. The Domains menu is `Search`, `Browse`, `Add`, and `Suggestions`. Search for `exampleadultsite.com`. `Search Superdomains` is on by default. Search runs as a job, so wait until the page reports that the domain does not exist, then select `Add exampleadultsite.com`. Adding from search does not assign a category.
 
 ![](img/domains-1.png)
 
-Leave `Auto-Categorize` unchecked since we haven't set that up yet. Select `Add exampleadultsite.com`. Then select the domain name to edit it. 
+When the add job finishes, select the domain name to edit it. `Created` is true.
 
 ![](img/domains-2.png)
+
+The edit page has `Edit`, `History`, and `URLs`. Leave `Include Subdomains` on. Leave `Force NXDOMAIN blocking` and `Prevent Upsteam Override` off. Under `Categories`, select `Add`, choose `Adult Sites`, and select `Add` again. `Training Categories` appears once a category is selected. Leave it unchecked. The button at the bottom is `Save Changes`. The first picture is the page before a category is chosen. The second is after `Save Changes`.
+
 ![](img/domains-3.png)
-
-Now add the `Adult Sites` category to the domain and hit save.
-
 ![](img/domains-4.png)
 
 Repeat this process to add `nytimes.com` to the `News` category. Next, we will add a `Restriction` that enforces Safe Search on Google for everyone on the network. Navigate to the `Restrictions -> Restrictions` page and hit `Add`.
 
 ![](img/restrictions-1.png)
 
-Enter the following details then hit `Add Restriction`. Note the cut off text under `Levels` is `forcesafesearch.google.com`.
+The levels help text says that at least one level is required and that the number of levels cannot be changed after creation. `Default Action` applies at the next full account rebuild of the DNS. Enter:
+
+- Name: `google` (lowercase letters only)
+- Level domain: `forcesafesearch.google.com`
+- Level label: `Safe Search`
+- Turn `Show` on
+- Display Name: `Google`
+- Default Action: `Safe Search`
+
+Turning `Show` on reveals `Icon`, `Custom SVG icon`, `Display Name`, `Order`, `Collapse`, `Parent`, and `Allow Block`. Leave those extra fields as they are, and set `Display Name` to `Google`. `Default Action` is on the form either way. After the level label is `Safe Search`, set `Default Action` to `Safe Search`. The level domain is the full name `forcesafesearch.google.com`. After the restriction is saved, the list shows `Safe Search (forcesafesearch.google.com)`.
 
 ![](img/restrictions-2.png)
 
-Now navigate to the `Domains -> Add` page. You can leave the settings at the top, but enter the following at the bottom:
+Select `Add Restriction`. Then navigate to the `Domains -> Add` page. Leave the checkboxes at their defaults: `Include Subdomains`, `Strip www. prefix`, `Add URLs`, and `Overwrite if empty` on, and the other checkboxes off. Timeout stays `10m`. `Update/Add` defaults to `Categories`, which does not set a restriction. Change it to `Categories and Restrictions`. Add the `Search Engines` category, leave `Training Categories` unchecked, set `Restriction` to `google`, and enter:
+
+```
+google.com
+google.co.nz
+```
 
 ![](img/restrictions-3.png)
 
-Now hit `Add`. You should see a result like the following:
+Select `Add`. You should see a result like the following, with `Created` true and `Updated` false:
 
 ![](img/restrictions-4.png)
 
@@ -255,7 +277,9 @@ There are two ways of deploying the DNS: on kubernetes, and on individual server
 Either can be used with either deployment method, and will be discussed more below.
 
 ### K8s DNS
-Unfortunately, it isn't possible to create a load balancer with both UDP and TCP using the same IP on kubernetes. This means you can't host plain DNS on kubernetes using a simple service. However, it is possible to convert each kubernetes node into its own DNS server using host networking. Later on, you can host Plain DNS, DOH, and DOT on the same IP using this approach. Add the following to your `values.yaml`:
+Kubernetes still cannot publish UDP and TCP on the same load-balancer IP, so plain DNS is not a normal Service. Host networking turns each node into a DNS server instead. The port clients should reach is `dns.dns.bindPort` (`53530` by default). A `dns-proxy` container in the DNS pod owns that port, filters each query, and forwards allowed queries to the PowerDNS recursor. The recursor listens only on loopback, on `dns.dns.recursorPort` (`5300`). DoH, DoT, and DoQ can share the same node address later. See [DOH, DOT, and DOQ](./doh-and-dot.md).
+
+Add the following to your `values.yaml`:
 
 ```yaml
 dns:
@@ -264,6 +288,12 @@ dns:
     enabled: true
     hostNetwork: true
     replicas: 1
+    # Host networking binds the DNS ports on the node. On a one-node cluster
+    # the default rolling update cannot start the replacement pod until the
+    # old one releases those ports, and with replicas: 1 it never stops the
+    # old pod first. Recreate stops the old pod, then starts the new one.
+    deploymentStrategy:
+      type: Recreate
     # Tone resources down for testing
     resources:
       requests:
@@ -283,14 +313,12 @@ dns:
             cpu: "200m"
     sidecarContainers:
       lmdbManager:
-        # Tone resources down for testing
+        # Tone the request down for testing. Do not set a memory limit:
+        # a limit can stall live updates when this container restarts.
         resources:
           requests:
             memory: "128Mi"
             cpu: "100m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"  
       healthCheck:
         bindPort: 53531
         httpSecret:
@@ -308,23 +336,24 @@ After running `kubectl get pods` you should now see something like this:
 
 ```
 NAME                                        READY   STATUS        RESTARTS      AGE
-safesurfer-dns-57b77b9978-nff8p             3/3     Running       0             26s
+safesurfer-dns-57b77b9978-nff8p             4/4     Running       0             26s
 ```
 
-If you were quick enough, you may have seen the `dns` pod `Initializing`. This process should have been quick because our database
-is small, but it can take a few minutes once your database is loaded with domains and/or users. During the `Initializing` phase, the DNS loads its own local database, meaning your DNS speed and/or uptime isn't tied to your postgres database. It will live-update after this. The postgres database can even go down completely without impacting internet access. However, users or admins will not be able to change settings while there is database downtime.
+Those four containers are the recursor, the plain DNS proxy, the LMDB manager, and the health check. Before the pod is ready, init containers build the local LMDB database and, when enabled above, install rate-limit rules in the node's iptables. The iptables rules stay until the node restarts.
+
+The init phase should be quick because our database is small, but it can take a few minutes once the database is loaded with domains and/or users. After that, the DNS answers from its local database, so query speed and uptime are not tied to postgres. The local database keeps updating while postgres is up. Users and admins cannot change settings while the database is down.
 
 Now that our DNS is running, we need to make it available to the internet. Since we're running host networking, we'll have to create a load balancer that points to the node pool of kubernetes itself. The way to do this depends on how you've deployed Safe Surfer.
 - On Azure, the node pool is implemented as a VM scale set. Create a new public IP address in the infrastructure resource group for the k8s cluster. Keep in mind that deleting the cluster will delete this IP. Then add another health check to the existing kubernetes load balancer (see below) as well as two new load balancing rules. The load balancing rules should be `UDP/53 to UDP/53530` and `TCP/53 to TCP/53530` on the IP address you created. Then, on the VM scale set, allow inbound traffic to `53530` in the firewall rules.
 - On GCP, you can create a new load balancer, there is no need to use the existing one. Reserve a new public IP and forward `UDP/53 to UDP/53530` and `TCP/53 to TCP/53530`. Select the kubernetes node pool as the backend. Allow inbound traffic to `53530` in the firewall rules. Create a new HTTP health check as shown below.
-- When testing locally with minikube/kind, you can run the following command in a separate termainal to access the DNS: `kubectl port-forward svc/safesurfer-dns-internal 5353:53`. You can now query the DNS on `127.0.0.1:5353`.
+- When testing locally with minikube/kind, run the following command in a separate terminal: `kubectl port-forward svc/safesurfer-dns-internal 5353:53`. That Service listens on port `53` and forwards to `dns.dns.bindPort` (`53530`). `kubectl port-forward` only carries TCP, so a UDP `dig` to `127.0.0.1` times out. Query with `dig +tcp @127.0.0.1 -p 5353`. A load balancer in front of the nodes, as in the Azure and GCP steps, carries UDP and TCP on port 53.
 
 #### Health Check
 The health check ensures that DNS traffic is only directed to nodes that are actually running a healthy DNS pod. It should be a HTTP health check on port `53531` of the node pool with the path `/healthy?target=dns&secret=generate-a-strong-secret`. The secret should match what you specified in your `values.yaml`. You must be careful with the interval and timeout of your health check. When a DNS pod receives the signal to terminate (as may occur during a normal rollout), it will keep running for `dns.dns.terminationWaitPeriodSeconds` (`30` by default). During this period, any health checks will return a non-2xx status code to allow traffic to be directed away from the pod before it terminates. So you must ensure that your health check will fail within `terminationWaitPeriodSeconds`, even if the DNS pod starts terminating right after the most recent health check succeeds.
 
 #### Other considerations for production
 - Ensure that each node has its own public IP, otherwise you will be using NAT for outbound traffic, which is a performance bottleneck for DNS.
-- Configure `dns.dns.hpa` and `dns.dns.pdb` for autoscaling according to your needs.
+- Configure `dns.dns.horizonalPodAutoscaler` and `dns.dns.podDisruptionBudget` for autoscaling according to your needs. The autoscaler key is spelled `horizonal` in the values file.
 - If your cluster is also hosting other services, you may wish to make the DNS its own node pool using [node taints](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) and point the load balancer towards that. You can then use `dns.nodeSelector` and `dns.tolerations` to ensure that node pool only hosts the DNS. For example, if you made a node pool named `dns-1` with the taint `NoSchedule: ss-role=dns`, then you could use the following in your `values` to only schedule on that pool:
 ```yaml
 dns:
@@ -341,27 +370,27 @@ dns:
     effect: NoSchedule
 ```
 
-#### Switching to LMDB feed
-LMDB feed is an event source that the DNS containers can connect to instead of a direct postgres connection. This has several benefits:
+#### Switching to the DNS feed
+The DNS feed is an event source that the DNS containers can connect to instead of a direct postgres connection. This has several benefits:
 - Reduced overhead on each DNS instance, especially with large amounts of customers and/or domains.
 - Can scale up and down during database downtime, for example in the case of a multi-faceted DDOS attack.
 - Faster initialization phase.
 - Reduced load on postgres, and theoretically infinite scaling, whereas postgres is limited by the amount of connections.
 - Improved security if deploying DNS servers outside of the kubernetes cluster containing the rest of the deployment.
 
-To enable LMDB feed, add the following to the `values.yaml`:
+To enable the DNS feed, add the following to the `values.yaml`:
 
 ```yaml
-dns:
-  lmdbFeed:
+feeds:
+  dns:
     default:
       enabled: true
       clientConfig: |-
         dns:
-          password: generate-a-lmdb-feed-password
+          password: generate-a-dns-feed-password
 ```
 
-Then also modify the DNS containers to connect to LMDB feed:
+Then also modify the DNS containers to connect to the feed:
 
 ```yaml
 dns:
@@ -388,15 +417,17 @@ dns:
 
 Then upgrade the deployment.
 
-To improve the availability of updates, you can also enable persistence. This allows LMDB feed to pick up where it left off when restarted. Otherwise, it has to fully rebuild when started:
+To improve the availability of updates, you can also enable persistence. This allows the DNS feed to pick up where it left off when restarted. Otherwise, it has to fully rebuild when started:
 
 ```yaml
-dns:
-  lmdbFeed:
+feeds:
+  dns:
     default:
       persistence:
         enabled: true
-        storageClassName: default
+        # Use a StorageClass that exists in the cluster. Leave it empty to use
+        # the cluster default. On kind that class is named standard, not default.
+        storageClassName: standard
 ```
 
 ### Server DNS
@@ -405,7 +436,20 @@ The DNS can run on any linux OS supporting systemd and docker. The `ss-config` t
 > **Warning**
 > The configuration produced by `ss-config` assumes a fresh system - it makes several changes to the system configuration as necessary, such as disabling `systemd-resolved`, enabling other services, and overwriting docker config.
 
-`ss-config` is distributed as a simple binary - you can download it for your system [here](https://files.safesurfer.io/files/dev/ss-config/2.0.0/).
+`ss-config` is distributed as a simple binary. This chart matches `ss-config` 3.0.0. Download the build for your system:
+
+| System | Download |
+| --- | --- |
+| Linux amd64 | [ss-config.3.0.0.linux-amd64](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.linux-amd64) |
+| Linux arm64 | [ss-config.3.0.0.linux-arm64](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.linux-arm64) |
+| Linux 386 | [ss-config.3.0.0.linux-386](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.linux-386) |
+| macOS amd64 | [ss-config.3.0.0.darwin-amd64](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.darwin-amd64) |
+| macOS arm64 | [ss-config.3.0.0.darwin-arm64](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.darwin-arm64) |
+| Windows amd64 | [ss-config.3.0.0.windows-amd64.exe](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.windows-amd64.exe) |
+| Windows arm64 | [ss-config.3.0.0.windows-arm64.exe](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.windows-arm64.exe) |
+| Windows 386 | [ss-config.3.0.0.windows-386.exe](https://files.safesurfer.io/files/dev/ss-config/3.0.0/ss-config.3.0.0.windows-386.exe) |
+
+The [2.0.0 binaries](https://files.safesurfer.io/files/dev/ss-config/2.0.0/) still install the old recursor layout and will not match the settings below.
 
 Rename the binary to `ss-config`, ensure it has execute permissions, and move it to your path. Alternatively you can use it directly from the download location.
 
@@ -476,9 +520,10 @@ blockpage:
   # We'll deploy the block page later
   domain: ''
 protocolchecker:
-  # We'll deploy the protocol checker later
+  # The checking-protection guide fills these in. `base` is the shared
+  # suffix, so the active name is active.check.ss.example.com.
   domains:
-    base: 'active.check.ss.example.com'
+    base: 'check.ss.example.com'
 ```
 
 Now we can use the `ss-config` tool to generate the installation files. Just run `ss-config template -f server-values.yaml`, which if successful shouldn't print anything to the console. There should now be a `vm-config` folder in your working directory. Inside the `vm-config` should be two items:
@@ -508,23 +553,26 @@ The script should guide you through the installation process from here. As menti
 Regardless of the option you choose, after booting (or rebooting) a DNS server, you can check its status by running `sudo docker ps`. You should see a result like the following:
 
 ```
-CONTAINER ID   IMAGE                                                          COMMAND                  CREATED         STATUS                  PORTS     NAMES
-beb13c45b9de   registry.gitlab.com/safesurfer/core/apps/status:1.1.1          "/app/status-exec"       1 second ago    Up Less than a second             ss-status
-dfd035fb952f   registry.gitlab.com/safesurfer/core/apps/dns:1.16.0            "/app/run-server.sh"     6 seconds ago   Up 5 seconds                      ss-dns
-43a6b21886ab   registry.gitlab.com/safesurfer/core/apps/lmdb-manager:1.16.2   "/app/lmdb-manager-e…"   7 seconds ago   Up 5 seconds                      ss-lmdb-manager
+CONTAINER ID   IMAGE                                                     COMMAND                  CREATED         STATUS        NAMES
+beb13c45b9de   registry.gitlab.com/safesurfer/core/apps/status:1.1.2     "/app/status-exec"       1 second ago    Up 1 second   ss-status
+a91c0e44d210   registry.gitlab.com/safesurfer/core/apps/dns-proxy:2.0.0  "/app/dns-proxy-exec"    5 seconds ago   Up 4 seconds  ss-plaindns
+dfd035fb952f   registry.gitlab.com/safesurfer/core/apps/dns:2.0.0        "/app/run-server.sh"     6 seconds ago   Up 5 seconds  ss-dns
+43a6b21886ab   registry.gitlab.com/safesurfer/core/apps/dns-feed:1.0.1   "/app/dns-feed-exec"     7 seconds ago   Up 6 seconds  ss-dns-feed
 ```
 
-If you were quick enough, you might have seen the init container running instead. This process should have been quick because our database is small, but it can take a few minutes once your database is loaded with domains and/or users. During the init phase, the DNS loads its own local database, meaning your DNS speed and/or uptime isn't tied to your postgres database. It will live-update after this. The postgres database can even go down completely without impacting internet access. However, users or admins will not be able to change settings while there is database downtime.
+`ss-plaindns` is the filtering proxy and owns port `53` on the server. `ss-dns` is the recursor and listens only on `127.0.0.1:5300`. `ss-dns-feed` holds the local LMDB database and keeps it up to date. `ss-status` is the health check from the values above. DoH, DoT, and DoQ are extra containers (`ss-doh`, `ss-dot`, `ss-doq`) and are not part of this example.
 
-#### Switching to LMDB feed
-Like the kubernetes DNS, the server DNS can connect to LMDB feed instead of postgres directly. The other `Switching to LMDB feed` section above explains how to deploy LMDB feed itself. The way you expose the feed to your DNS servers depends on your configuration.
+`ss-dns-feed` builds that database before the other containers serve traffic. This should be quick because our database is small, but it can take a few minutes once the database is loaded with domains and/or users. After that, the DNS answers from its local database, so query speed and uptime are not tied to postgres. Users and admins cannot change settings while the database is down.
+
+#### Switching to the DNS feed
+Like the kubernetes DNS, the server DNS can connect to the DNS feed instead of postgres directly. The other `Switching to the DNS feed` section above explains how to deploy the feed itself. The way you expose the feed to your DNS servers depends on your configuration.
 
 If the servers are within the same internal network as the cluster, you may like to use an internal load balancer, for example:
 
 ```yaml
 # In K8s values.yaml
-dns:
-  lmdbFeed:
+feeds:
+  dns:
     default:
       service:
         type: LoadBalancer
@@ -546,7 +594,7 @@ dns:
             external:
               host: # The IP created
               username: dns
-              password: generate-a-lmdb-feed-password
+              password: generate-a-dns-feed-password
               insecure: true
           postgres:
             enabled: false
@@ -558,22 +606,22 @@ dns:
             external:
               host: # The IP created
               username: dns
-              password: generate-a-lmdb-feed-password
+              password: generate-a-dns-feed-password
               insecure: true
           postgres:
             enabled: false
 ```
 
-If the servers are hosted externally, you can expose LMDB feed using an ingress. Check out the [ingress and cert setup](./ingress-and-cert-setup.md) guide, then adapt the following:
+If the servers are hosted externally, you can expose the DNS feed using an ingress. The feed serves gRPC. Check out the [ingress and cert setup](./ingress-and-cert-setup.md) guide, then adapt the following:
 
 ```yaml
 # In K8s values.yaml
-dns:
-  lmdbFeed:
+feeds:
+  dns:
     default:
-      ingress: 
+      ingress:
         enabled: true
-        host: lmdb-feed.ss.example.com
+        host: dns-feed.ss.example.com
         tls:
           # See the ingress and cert guide
 ```
@@ -590,9 +638,9 @@ dns:
           lmdbFeed:
             enabled: true
             external:
-              host: 'lmdb-feed.ss.example.com:443'
+              host: 'dns-feed.ss.example.com:443'
               username: dns
-              password: generate-a-lmdb-feed-password
+              password: generate-a-dns-feed-password
               insecure: false
           postgres:
             enabled: false
@@ -602,17 +650,17 @@ dns:
           lmdbFeed:
             enabled: true
             external:
-              host: 'lmdb-feed.ss.example.com:443'
+              host: 'dns-feed.ss.example.com:443'
               username: dns
-              password: generate-a-lmdb-feed-password
+              password: generate-a-dns-feed-password
               insecure: false
           postgres:
             enabled: false
 ```
 
 If you are using autoscaling, you can improve performance and availability by enabling peering on the DNS servers. With peering enabled, DNS containers initialize using each other's data, then seamlessly continue receiving live updates from the upstream feed. This enables:
-- Autoscaling even if LMDB feed is unreachable.
-- Reduced load on LMDB feed.
+- Autoscaling even if the DNS feed is unreachable.
+- Reduced load on the DNS feed.
 - Reduced data transfer between regions.
 - Improved initialization speed.
 
@@ -640,6 +688,8 @@ First, create a variable containing the IP address your DNS is available on:
 ```sh
 DNS_IP="10.10.10.10"
 ```
+
+If you are using the kind or minikube port-forward from above, that forward is TCP only and it listens on port 5353. Use `DNS_IP="127.0.0.1"` and add `-p 5353 +tcp` to each `dig` below.
 
 The DNS should be enforcing Safe Search on Google according to our earlier settings:
 
@@ -711,10 +761,20 @@ dig @$DNS_IP exampleadultsite.com
 ; <<>> DiG 9.18.1-1ubuntu1.2-Ubuntu <<>> @10.10.10.10 exampleadultsite.com
 ; (1 server found)
 ;; global options: +cmd
-;; connection timed out; no servers could be reached
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 20865
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;exampleadultsite.com.          IN      A
+
+;; Query time: 4 msec
+;; SERVER: 10.10.10.10#53(10.10.10.10) (UDP)
+;; WHEN: Tue Oct 20 14:17:40 NZDT 2026
+;; MSG SIZE  rcvd: 37
 ```
 
-DNS resolution fails because we haven't specified a domain to redirect to when a domain is blocked. This may be the behavior you want, but it isn't recommended as users can confuse this for internet connection issues rather than blocking.
+The answer is `NXDOMAIN`. There is no block-page name to redirect to yet, so the proxy answers that the name does not exist. That is easy to confuse with a domain that was never registered.
 
 We will update this in one of the next sections - [creating a block page](./block-page.md).
 

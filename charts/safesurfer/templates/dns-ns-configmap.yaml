@@ -41,8 +41,9 @@ data:
     #################################
     # disable-packetcache	Disable packetcache
     #
-    # We need to have the packetcache disabled as lua needs to answer every request
-    disable-packetcache=yes
+    # Filtering now happens entirely in dns-proxy and the recursor runs no
+    # per-query Lua, so the packet cache is safe to enable.
+    disable-packetcache=no
 
     #################################
     # disable-syslog	Disable logging to syslog, useful when running inside a supervisor that logs stdout
@@ -78,7 +79,10 @@ data:
     #################################
     # local-port	port to listen on
     #
-    local-port={{ .Values.dns.dns.bindPort }}
+    # The recursor is an internal, loopback-only component: the plaindns
+    # proxy (and the doh/dot sidecars) filter queries then forward "allow"
+    # queries here. External traffic lands on the proxy, not the recursor.
+    local-port={{ .Values.dns.dns.recursorPort }}
 
     #################################
     # loglevel	Amount of logging. Higher is more. Do not set below 3
@@ -91,9 +95,15 @@ data:
     lua-config-file=/etc/pdns/config.lua
 
     #################################
-    # lua-dns-script	Filename containing an optional 'lua' script that will be used to modify dns answers
+    # max-concurrent-requests-per-tcp-connection	Maximum number of requests handled concurrently per TCP connection
     #
-    lua-dns-script=/etc/pdns/lua/pdns.lua
+    # The recursor only ever serves the co-located dns-proxy, which multiplexes
+    # ALL queries over a small fixed pool of TCP connections (APP_MAX_TCP_CONNS,
+    # auto-sized to ~GOMAXPROCS). The default of 10 therefore caps the whole
+    # node's upstream concurrency at poolSize*10 (~40 for plain DNS), which a
+    # busy or abused frontend saturates. The only client is our trusted, local
+    # proxy, so lift this well clear of the per-node connection pool.
+    max-concurrent-requests-per-tcp-connection=1000
 
     #################################
     # pdns-distributes-queries	If PowerDNS itself should distribute queries over threads
@@ -150,6 +160,14 @@ data:
     # webserver-allow-from These IPs and subnets are allowed to access the webserver. Note that specifying an IP address without a netmask uses an implicit netmask of /32 or /128.
     #
     webserver-allow-from=0.0.0.0/0,::/0
+    {{- with .Values.dns.dns.recursorExtraConfig }}
+    #################################
+    # Extra raw recursor settings (rendered as key=value lines). Useful for
+    # e.g. forward-zones-recurse when the network cannot do full recursion.
+    {{- range $k, $v := . }}
+    {{ $k }}={{ $v }}
+    {{- end }}
+    {{- end }}
   basic-setup.rpz: |-
     $TTL    604800
     @       IN      SOA     localhost. root.localhost. (
@@ -160,11 +178,6 @@ data:
                             604800        ; Negative Cache TTL
                             )
     @       IN      NS      localhost.
-
-    {{- if .Values.dns.dns.blockFirefoxDOH }}
-    ; NXDOMAIN for firefox DNS over HTTPS - flag to disable DoH for anyone using this server
-    use-application-dns.net CNAME .
-    {{- end }}
   {{- if .Values.dns.dns.enabled }}
   status.yaml: |-
     targets:
@@ -184,7 +197,7 @@ data:
           proto: tcp
           domain: {{ .Values.dns.dns.healthCheck.testDomain }}
           timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
-    {{- if .Values.dns.doh.sidecar }}
+    {{- if .Values.dns.doh.enabled }}
     - name: doh
       healthChecks:
       - type: HTTP
@@ -193,12 +206,21 @@ data:
           method: GET
           timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
     {{- end }}
-    {{- if .Values.dns.dot.sidecar }}
+    {{- if .Values.dns.dot.enabled }}
     - name: dot
       healthChecks:
       - type: HTTP
         spec:
           url: http://localhost:8889
+          method: GET
+          timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
+    {{- end }}
+    {{- if .Values.dns.doq.enabled }}
+    - name: doq
+      healthChecks:
+      - type: HTTP
+        spec:
+          url: http://localhost:8891
           method: GET
           timeout: {{ .Values.dns.dns.healthCheck.testTimeout }}s
     {{- end }}

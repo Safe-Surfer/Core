@@ -1,0 +1,238 @@
+{{- if .Values.feeds.smm.default.enabled }}
+# The custom storage class, if enabled.
+{{- if and .Values.feeds.smm.default.persistence.enabled .Values.feeds.smm.default.persistence.storageClass }}
+---
+{{ toYaml .Values.feeds.smm.default.persistence.enabled .Values.feeds.smm.default.persistence.storageClass }}
+{{- end}}
+# The PVC, if enabled.
+{{- if .Values.feeds.smm.default.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.feeds.smm.default.persistence.size }}
+  {{- if .Values.feeds.smm.default.persistence.storageClassName }}
+  storageClassName: {{ .Values.feeds.smm.default.persistence.storageClassName }}
+  {{- else if .Values.feeds.smm.default.persistence.storageClass.metadata.name }}
+  storageClassName: {{ .Values.feeds.smm.default.persistence.storageClass.metadata.name }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}-smm
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  username: {{ .Values.feeds.smm.default.username | b64enc | quote }}
+  password: {{ required "smm feed password required" .Values.feeds.smm.default.password | b64enc | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  replicas: 1
+  serviceName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+      {{- if not .Values.feeds.smm.default.lmdb }}
+      sqlite-feed: '1'
+      {{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+        {{- if not .Values.feeds.smm.default.lmdb }}
+        sqlite-feed: '1'
+        {{- end }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        #
+        # Ensure rolling deployments when mounted secrets change.
+        #
+        {{ if .Values.db.external.enabled }}
+        checksum/db-login-password: {{ .Values.db.external.pguser | sha256sum }}
+        checksum/db-login-username: {{ .Values.db.external.pgpassword | sha256sum }}
+        {{ end }}
+        {{ if .Values.db.inCluster.enabled }}
+        checksum/internal-db-login-username: {{ .Values.db.inCluster.pguser | sha256sum }}
+        {{ end }}
+        checksum/username: {{ .Values.feeds.smm.default.username | sha256sum }}
+        checksum/password: {{ .Values.feeds.smm.default.password | sha256sum }}
+    spec:
+      securityContext:
+        fsGroup: 250
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      volumes:
+      {{- if .Values.feeds.smm.default.persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+      {{- end }}
+      - name: tmp
+        emptyDir: {}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+        image: {{ .Values.feeds.smm.default.image }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          privileged: false
+          runAsUser: 250
+          runAsGroup: 250
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        {{- if .Values.feeds.smm.default.persistence.enabled }}
+        - name: data
+          mountPath: /data/lmdb
+        {{- end }}
+        - name: tmp
+          mountPath: /tmp
+        ports:
+        - name: smm-feed
+          containerPort: {{ .Values.feeds.smm.default.port }}
+          protocol: TCP
+        env:
+          {{ include "loggingEnvs" (dict "level" .Values.feeds.smm.default.logLevel) | indent 10 }}
+          {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_INIT_LIMIT
+            value: {{ .Values.feeds.smm.default.initLimit | int | quote }}
+          - name: APP_LISTENER_TIMEOUT
+            value: {{ .Values.feeds.smm.default.listenerTimeout }}
+          - name: APP_PORT
+            value: {{ .Values.feeds.smm.default.port | int | quote }}
+          - name: APP_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}-smm
+                key: username
+          - name: APP_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}-smm
+                key: password
+          - name: APP_ENABLE_LMDB
+            value: {{ .Values.feeds.smm.default.lmdb | quote }}
+          - name: APP_PERSISTENT
+            value: {{ .Values.feeds.smm.default.persistence.enabled | quote }}
+          - name: APP_PG_MAX_IDLE_CONNS
+            value: {{ .Values.feeds.smm.default.maxIdleConns | int | quote }}
+          - name: APP_PG_MAX_OPEN_CONNS
+            value: {{ .Values.feeds.smm.default.maxOpenConns | int | quote }}
+          - name: APP_LMDB_FEED_PORT
+            value: {{ .Values.feeds.smm.default.port | int | quote }}
+          {{- if .Values.feeds.smm.default.persistence.enabled }}
+          - name: APP_BASE_DIR
+            value: /data/lmdb
+          {{- else }}
+          - name: APP_BASE_DIR
+            value: /tmp/lmdb
+          {{- end }}
+          - name: APP_BUFFER_SIZE
+            value: {{ .Values.feeds.smm.default.batchHistoryLength | int | quote }}
+          - name: APP_SMM_FEED_MAP_SIZE
+            value: {{ .Values.feeds.smm.default.mapSize }}
+          - name: APP_MAX_WAITING_BATCHES
+            value: {{ .Values.feeds.smm.default.batchBufferSize | int | quote }}
+          - name: APP_MAX_BATCH_DURATION
+            value: {{ .Values.feeds.smm.default.maxBatchDuration }}
+          - name: APP_MAX_RECV_SIZE
+            value: {{ .Values.feeds.smm.default.maxBatchSize | quote }}
+          - name: APP_POST_FULL_REBUILD_UPDATE_BATCH_SIZE
+            value: {{ .Values.feeds.smm.default.liveUpdateMaxBatchSize | int | quote }}
+          - name: APP_MAX_LIVE_UPDATE_DELAY
+            value: {{ .Values.feeds.smm.default.liveUpdateMaxDelay | quote }}
+          - name: APP_MAX_LIVE_UPDATE_BATCH_SIZE
+            value: {{ .Values.feeds.smm.default.liveUpdateMaxBatchSize | int | quote }}
+          - name: APP_FULL_REBUILD_INTERVAL
+            value: {{ .Values.feeds.smm.default.fullRebuildInterval | quote }}
+          - name: APP_FULL_REBUILD_WINDOW
+            value: '0'
+          - name: APP_MAX_LISTENER_RETAIN
+            value: {{ .Values.feeds.smm.default.maxListenerRetainDuration }}
+          - name: APP_CURSOR_SIZE
+            value: {{ .Values.feeds.smm.default.iterSize | int | quote }}
+          - name: APP_CURSOR_NAME
+            value: server_side_paging_smm
+          {{- if .Values.feeds.smm.default.segmentation.enabled }}
+          - name: APP_SEGMENT_SIZE
+            value: {{ .Values.feeds.smm.default.segmentation.size | int | quote }}
+          {{- else }}
+          - name: APP_SEGMENT_SIZE
+            value: '0'
+          {{- end }}
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 2
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Values.feeds.smm.default.port }}
+        livenessProbe:
+          failureThreshold: 2
+          initialDelaySeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+          tcpSocket:
+            port: {{ .Values.feeds.smm.default.port }}
+        resources:
+          {{- toYaml .Values.feeds.smm.default.resources | nindent 10 }}
+---
+# The service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    {{- if .Values.feeds.smm.default.service.isGCPNEG }}
+    cloud.google.com/neg: '{"exposed_ports": {"{{ .Values.feeds.smm.default.service.port }}":{}}}'
+    {{- end }}
+    {{- with .Values.feeds.smm.default.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - name: smm-feed
+    port: {{ .Values.feeds.smm.default.service.port }}
+    protocol: TCP
+    targetPort: {{ .Values.feeds.smm.default.port }}
+  type: {{ .Values.feeds.smm.default.service.type }}
+  {{- if (or (eq .Values.feeds.smm.default.service.type "LoadBalancer") (eq .Values.feeds.smm.default.service.type "NodePort")) }}
+  externalTrafficPolicy: Local
+  {{- if .Values.feeds.smm.default.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.feeds.smm.default.service.loadBalancerIP }}
+  {{- end }}
+  {{- with .Values.feeds.smm.default.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{ toYaml . | nindent 2 }}
+  {{- end }}
+  sessionAffinity: ClientIP
+  {{- end }}
+  externalIPs:
+{{- if .Values.feeds.smm.default.service.externalIPs }}
+{{- with .Values.feeds.smm.default.service.externalIPs }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+{{- end }}

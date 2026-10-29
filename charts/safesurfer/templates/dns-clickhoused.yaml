@@ -32,7 +32,30 @@ metadata:
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
 type: Opaque
 data:
-  secret: {{ required "Clickhoused http frontend requires a secret" .Values.dns.clickhoused.internal.frontend.http.secret | b64enc | quote }}
+  {{- $users := required "Clickhoused http frontend requires users" .Values.dns.clickhoused.internal.frontend.http.users }}
+  {{- $processedUsers := list }}
+  {{- range $user := $users }}
+  {{- if $user.feed }}
+  {{- $feedNameOverride := "" }}
+  {{- $feedPort := "80" }}
+  {{- if eq $user.feed.instance "default" }}
+  {{- $feedNameOverride = $.Values.feeds.dns.default.nameOverride }}
+  {{- $feedPort = $.Values.feeds.dns.default.service.port | toString }}
+  {{- else }}
+  {{- range $extra := $.Values.feeds.dns.extraInstances }}
+  {{- if eq $extra.name $user.feed.instance }}
+  {{- $feedNameOverride = $extra.nameOverride }}
+  {{- $feedPort = $extra.service.port | toString }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- $feedHost := printf "%s.%s.svc:%s" (include "name" (dict "Release" $.Release "name" (printf "dns-feed-%s" $user.feed.instance) "nameOverride" $feedNameOverride)) (include "ns" (dict "Values" $.Values "Release" $.Release "IndividualNamespace" $.Values.api.namespace)) $feedPort }}
+  {{- $processedUsers = append $processedUsers (dict "name" $user.name "secret" $user.secret "feed" (dict "host" $feedHost "username" $user.feed.username "password" $user.feed.password)) }}
+  {{- else }}
+  {{- $processedUsers = append $processedUsers (dict "name" $user.name "secret" $user.secret) }}
+  {{- end }}
+  {{- end }}
+  users: {{ $processedUsers | toJson | b64enc | quote }}
 {{- end }}
 
 # Alphasoc API key secret if needed.
@@ -122,6 +145,13 @@ spec:
           containerPort: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
           protocol: TCP
           {{- end }}
+        {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
+        startupProbe:
+          tcpSocket:
+            port: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort }}
+          failureThreshold: 30000
+          periodSeconds: 10
+        {{- end }}
         env:
         {{ include "loggingEnvs" (dict "level" .Values.dns.clickhoused.internal.logLevel) | indent 8 }}
         - name: APP_HTTP_BACKEND
@@ -145,13 +175,15 @@ spec:
         # HTTP frontend specific
         - name: APP_FRONTEND_HTTP
           value: '1'
-        - name: APP_HTTP_SECRET
+        - name: APP_HTTP_USERS
           valueFrom:
             secretKeyRef:
               name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}-http-frontend
-              key: secret
+              key: users
         - name: APP_HTTP_PORT
           value: {{ .Values.dns.clickhoused.internal.frontend.http.bindPort | quote }}
+        - name: APP_LMDB_FEED_LMDB_MAP_SIZE
+          value: 1TB
         {{- end }}
         {{- if .Values.dns.clickhoused.internal.backend.clickhouse.enabled}}
         # Clickhouse backend specific
@@ -169,6 +201,8 @@ spec:
           value: {{ .Values.dns.clickhoused.internal.backend.http.timeout }}
         - name: APP_HTTP_INGRESS_BASE_URL
           value: {{ .Values.dns.clickhoused.internal.backend.http.baseURL }}
+        - name: APP_HTTP_INGRESS_USERNAME
+          value: {{ .Values.dns.clickhoused.internal.backend.http.username | quote }}
         - name: APP_HTTP_INGRESS_SECRET
           valueFrom:
             secretKeyRef:
@@ -192,8 +226,18 @@ spec:
         {{ include "apiInternalConnection" . | indent 8 }}
         {{ include "redisEnvs" (dict "required" true "Values" .Values "Release" .Release) | indent 8 }}
         {{- end }}
+        {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
+        volumeMounts:
+        - name: feed-data
+          mountPath: /data
+        {{- end }}
         resources:
           {{- toYaml .Values.dns.clickhoused.internal.resources | nindent 10 }}
+      {{- if .Values.dns.clickhoused.internal.frontend.http.enabled }}
+      volumes:
+      - name: feed-data
+        emptyDir: {}
+      {{- end }}
       {{- with .Values.dns.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -355,7 +399,7 @@ spec:
 #
 # Issuer and cert.
 #
-{{ include "cert" (dict "cert" .Values.dns.clickhoused.internal.frontend.http.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.clickhoused.internal.frontend.http.host) "Values" .Values)}}
+{{ include "cert" (dict "cert" .Values.dns.clickhoused.internal.frontend.http.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Values.dns.clickhoused.internal.frontend.http.host) "Values" .Values "ingressClass" .Values.dns.clickhoused.internal.frontend.http.ingressClass)}}
 ---
 #
 # Create the ingress.
@@ -365,14 +409,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "clickhoused" "nameOverride" .Values.dns.clickhoused.internal.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  {{- with .Values.dns.clickhoused.internal.frontend.http.ingressAnnotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    {{- if .Values.dns.clickhoused.internal.frontend.http.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.dns.clickhoused.internal.frontend.http.rateLimiting.rpm | quote }}
-    {{- end }}
-    {{- if .Values.dns.clickhoused.internal.frontend.http.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.dns.clickhoused.internal.frontend.http.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.dns.clickhoused.internal.frontend.http.ingressClass }}
   tls:

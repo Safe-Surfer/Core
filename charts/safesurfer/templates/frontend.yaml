@@ -54,7 +54,7 @@ spec:
         - name: APP_ALLOWED_SCRIPT_SRCS
           value: "https://{{ .Values.frontend.ingress.host }} {{ .Values.frontend.extraScriptSrc }}"
         - name: APP_ALLOWED_WORKER_SRCS
-          value: "https://{{ .Values.frontend.ingress.host }} blob:"
+          value: "https://{{ .Values.frontend.ingress.host }} blob: {{ .Values.frontend.extraWorkerSrc }}"
         {{- if .Values.frontend.apiHostOverride }}
         - name: APP_API_URL
           value: {{ .Values.frontend.apiHostOverride }}
@@ -76,10 +76,14 @@ spec:
         - name: APP_CATEGORIZER_URL
           value: https://{{ .Values.categorizer.adminApp.ingress.host }}
         {{- end }}
+        {{- if .Values.dns.dot.host }}
         - name: APP_DOT_HOST
           value: {{ ( split `,` .Values.dns.dot.host)._0 }}
+        {{- end }}
+        {{- if .Values.dns.doh.host }}
         - name: APP_DOH_URL
           value: https://{{ ( split `,` .Values.dns.doh.host)._0 }}/
+        {{- end }}
         - name: APP_CHARGEBEE_SITE
           value: {{ .Values.api.accounts.chargebee.site }}
         - name: APP_CHARGEBEE_DEFAULT_PLAN
@@ -215,7 +219,7 @@ spec:
 #
 # Issuer and cert.
 #
-{{ include "cert" (dict "cert" .Values.frontend.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride)) "namespace" .Values.frontend.namespace "dnsNames" (list .Values.frontend.ingress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.frontend.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride)) "namespace" .Values.frontend.namespace "dnsNames" (list .Values.frontend.ingress.host) "Values" .Values "ingressClass" .Values.frontend.ingress.class) }}
 ---
 #
 # Create the ingress.
@@ -225,11 +229,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "frontend" "nameOverride" .Values.frontend.nameOverride) }}-ingress
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.frontend.namespace) }}
+  {{- with .Values.frontend.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    {{- if .Values.frontend.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.frontend.ingress.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.frontend.ingress.class }}
   tls:

@@ -1,13 +1,22 @@
-{{ define "lmdbFeedDashboard" }}
+{{- if .Values.monitoring.enabled }}
+{{- $enabled := or .Values.feeds.smm.default.enabled .Values.feeds.auth.default.enabled .Values.feeds.blocking.default.enabled .Values.feeds.subscription.enabled .Values.feeds.dns.enabled }}
+{{- if not $enabled }}
+{{- range $spec := .Values.feeds.dns.extraInstances }}
+{{- if $spec.enabled }}
+{{- $enabled = true }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   labels:
     {{ .Values.monitoring.dashboardLabels | toYaml | nindent 4 }}
-  name: {{ .name }}-dashboard
+  name: {{ include "name" (dict "Release" .Release "name" "feeds" "nameOverride" "") }}-dashboard
   namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
 data:
-  {{ .name }}.json: |-
+  {{ include "name" (dict "Release" .Release "name" "feeds" "nameOverride" "") }}.json: |-
     {
       "annotations": {
         "list": [
@@ -28,6 +37,7 @@ data:
       "editable": true,
       "fiscalYearStartMonth": 0,
       "graphTooltip": 0,
+      "id": 30,
       "links": [],
       "liveNow": false,
       "panels": [
@@ -116,9 +126,9 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"}[5m]) * 100",
+              "expr": "rate(container_cpu_usage_seconds_total{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"}[5m]) * 100",
               "interval": "",
-              "legendFormat": " {{ ` {{ pod }} ` }} ",
+              "legendFormat": "  {{`{{ pod }}`}}  ",
               "range": true,
               "refId": "A"
             },
@@ -128,7 +138,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Request",
               "range": true,
@@ -140,7 +150,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"} * 100)",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"} * 100)",
               "interval": "",
               "legendFormat": "CPU Limit",
               "range": true,
@@ -239,9 +249,9 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"}",
+              "expr": "container_memory_working_set_bytes { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"}",
               "interval": "",
-              "legendFormat": "  {{ ` {{ pod }} ` }}  ",
+              "legendFormat": "   {{`{{ pod }}`}}   ",
               "range": true,
               "refId": "A"
             },
@@ -251,7 +261,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"})",
+              "expr": "min(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"})",
               "interval": "",
               "legendFormat": "Memory Request",
               "range": true,
@@ -263,7 +273,7 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"})",
+              "expr": "min(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"})",
               "interval": "",
               "legendFormat": "Memory Limit",
               "range": true,
@@ -303,7 +313,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"}",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"}",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -342,7 +352,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"} |= \"level=error|level=panic|level=fatal\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"} |= \"level=error|level=panic|level=fatal\"",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -381,7 +391,7 @@ data:
                 "uid": "P8E80F9AEF21F6940"
               },
               "editorMode": "code",
-              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", container=\"{{ .name }}\"} |= \"level=warning\"",
+              "expr": "{ namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", container=\"$app\"} |= \"level=warning\"",
               "legendFormat": "",
               "queryType": "range",
               "refId": "A"
@@ -479,9 +489,9 @@ data:
                 "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
-              "expr": "lmdb_manager_dir_bytes_available { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}\", app=\"{{ .name }}\"}",
+              "expr": "ddb_dir_bytes_available { namespace=\"{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}\", app=\"$app\"}",
               "interval": "",
-              "legendFormat": "{{ ` {{ pod }} ` }}",
+              "legendFormat": " {{`{{ pod }}`}} ",
               "range": true,
               "refId": "A"
             }
@@ -495,7 +505,9 @@ data:
       "style": "dark",
       "tags": [],
       "templating": {
-        "list": []
+        "list": [
+          {{- include "feedsDashFilter" (dict "Values" .Values "Release" .Release) | fromYaml | toJson | nindent 10 }}
+        ]
       },
       "time": {
         "from": "now-24h",
@@ -503,8 +515,10 @@ data:
       },
       "timepicker": {},
       "timezone": "",
-      "title": "{{ .name }}",
+      "title": "{{ include "name" (dict "Release" .Release "name" "feeds" "nameOverride" "") }}",
+      "uid": "d6d01cc8-c2ee-4af8-acb5-ae8ce13aee3d",
       "version": 1,
       "weekStart": ""
     }
-{{ end }}
+{{- end }}
+{{- end }}

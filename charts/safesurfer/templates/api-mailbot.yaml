@@ -19,6 +19,9 @@ spec:
     spec:
       template:
         spec:
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
           # Use the resources created by the API for most things
           imagePullSecrets:
           - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
@@ -29,26 +32,44 @@ spec:
             image: {{ .Values.api.alerts.mailbot.image }}
             resources:
               {{- toYaml .Values.api.alerts.mailbot.resources | nindent 14 }}
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
             env:
+            - name: APP_MAX_CONCURRENCY
+              value: {{ .Values.api.alerts.mailbot.maxConcurrency | int | quote }}
             # Include DB connection
             {{ include "dbEnvs" . | indent 12 }}
             - name: APP_PG_MAX_IDLE_CONNS
               value: {{ .Values.api.alerts.mailbot.maxIdleConns | int | quote }}
             - name: APP_PG_MAX_OPEN_CONNS
               value: {{ .Values.api.alerts.mailbot.maxOpenConns | int | quote }}
-            {{ include "emailEnvs" . | indent 12 }}
             {{ include "loggingEnvs" (dict "level" .Values.api.alerts.mailbot.logLevel) | indent 12 }}
             {{ include "apiInternalConnection" . | indent 12 }}
-            - name: SAFESURFER_SENDGRID_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-sendgrid-secret
-                  key: secret
-            # Sending emails
-            - name: EMAIL_OUR_NAME
-              value: {{ .Values.api.sendgrid.senderName }}
-            - name: EMAIL_OUR_ADDRESS
-              value: {{ .Values.api.sendgrid.senderAddress }}
             - name: FRONTEND_BASE_URL
               value: https://{{ .Values.frontend.ingress.host }}
+            {{- if .Values.feeds.subscription.default.enabled }}
+            # - name: APP_SUB_FEED_ENABLED # TODO
+            #   value: '1'
+            - name: APP_SUBSCRIPTION_FEED_MAP_SIZE
+              value: {{ .Values.feeds.subscription.default.mapSize }}
+            - name: APP_SUB_FEED_PATH
+              value: /tmp/sub_feed
+            - name: APP_SUB_FEED_MAX_RECV_SIZE
+              value: 128MB
+            - name: APP_SUB_FEED_MESSAGE_TIMEOUT
+              value: 1m
+            - name: APP_SUB_FEED_HOST
+              value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.subscription.default.service.port }}
+            - name: APP_SUB_FEED_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                  key: username
+            - name: APP_SUB_FEED_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                  key: password
+            {{- end }}
 {{ end }}

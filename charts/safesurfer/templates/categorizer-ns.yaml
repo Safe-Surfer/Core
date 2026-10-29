@@ -1,4 +1,4 @@
-{{- if or .Values.categorizer.adminApp.enabled .Values.categorizer.autoCat.crawlerWorker.enabled .Values.categorizer.autoCat.classifier.enabled .Values.categorizer.autoCat.addFromDNS.enabled }}
+{{- if .Values.categorizer.adminApp.enabled }}
 {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
 ---
 #

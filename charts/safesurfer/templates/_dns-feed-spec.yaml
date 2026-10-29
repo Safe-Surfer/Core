@@ -1,4 +1,4 @@
-{{ define "lmdbFeedSpec" }}
+{{ define "dnsFeedSpec" }}
 {{- if .Spec.enabled }}
 # The custom storage class, if enabled.
 {{- if and .Spec.persistence.enabled .Spec.persistence.storageClass }}
@@ -11,8 +11,8 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
-  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ .Namespace }}
 spec:
   accessModes:
   - ReadWriteOnce
@@ -21,7 +21,7 @@ spec:
       storage: {{ .Spec.persistence.size }}
   {{- if .Spec.persistence.storageClassName }}
   storageClassName: {{ .Spec.persistence.storageClassName }}
-  {{- else if .Spec.persistence.storageClass.metadata.name }}
+  {{- else if and .Spec.persistence.storageClass .Spec.persistence.storageClass.metadata.name }}
   storageClassName: {{ .Spec.persistence.storageClass.metadata.name }}
   {{- end }}
 {{- end }}
@@ -30,8 +30,8 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
-  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ .Namespace }}
 type: Opaque
 data:
   client.yaml: {{ .Spec.clientConfig | b64enc | quote }}
@@ -39,18 +39,24 @@ data:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
-  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ .Namespace }}
 spec:
   replicas: 1
-  serviceName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  serviceName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
   selector:
     matchLabels:
-      app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      {{- if not .Spec.lmdb }}
+      sqlite-feed: '1'
+      {{- end }}
   template:
     metadata:
       labels:
-        app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+        app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+        {{- if not .Spec.lmdb }}
+        sqlite-feed: '1'
+        {{- end }}
       annotations:
         prometheus.io/path: /metrics
         prometheus.io/port: "2112"
@@ -70,21 +76,21 @@ spec:
       securityContext:
         fsGroup: 250
       imagePullSecrets:
-      - name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}-gitlab-registry
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
       automountServiceAccountToken: false
       volumes:
       {{- if .Spec.persistence.enabled }}
       - name: data
         persistentVolumeClaim:
-          claimName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+          claimName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
       {{- end }}
       - name: tmp
         emptyDir: {}
       - name: config
         secret:
-          secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
       containers:
-      - name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+      - name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
         image: {{ .Spec.image }}
         securityContext:
           readOnlyRootFilesystem: true
@@ -112,6 +118,12 @@ spec:
         env:
           {{ include "loggingEnvs" (dict "level" .Spec.logLevel) | indent 10 }}
           {{ include "dbEnvs" . | indent 10 }}
+          - name: APP_INIT_LIMIT
+            value: {{ .Spec.initLimit | int | quote }}
+          - name: APP_LISTENER_TIMEOUT
+            value: {{ .Spec.listenerTimeout }}
+          - name: APP_ENABLE_LMDB
+            value: {{ .Spec.lmdb | quote }}
           - name: APP_PERSISTENT
             value: {{ .Spec.persistence.enabled | quote }}
           - name: APP_PG_MAX_IDLE_CONNS
@@ -139,8 +151,6 @@ spec:
             value: {{ .Spec.maxBatchDuration }}
           - name: APP_LMDB_FEED_MAX_SEND_SIZE
             value: {{ .Spec.maxBatchSize | quote }}
-          - name: APP_STREAM_DOMAINS
-            value: {{ .Spec.streamDomains | quote }}
           - name: APP_MAX_DOMAIN_LIVE_UPDATE_BATCH_SIZE
             value: {{ .Spec.domainLiveUpdateMaxBatchSize | int | quote }}
           - name: APP_MAX_DOMAIN_LIVE_UPDATE_DELAY
@@ -181,12 +191,11 @@ spec:
             value: {{ .Spec.accountSegmentation.enabled | quote }}
           - name: APP_MAX_LISTENER_RETAIN_DURATION
             value: {{ .Spec.maxListenerRetainDuration }}
+          - name: APP_STREAM_DOMAINS
+            value: {{ .Spec.streamDomains | quote }}
           {{- if .Spec.accountSegmentation.enabled }}
           - name: APP_ACCOUNT_SEGMENTATION_SIZE
             value: {{ .Spec.accountSegmentation.size | int | quote }}
-          {{- end }}
-          {{- with .Values.dns.extraEnv }}
-          {{- toYaml . | nindent 10 }}
           {{- end }}
         readinessProbe:
           failureThreshold: 3
@@ -206,21 +215,13 @@ spec:
             port: {{ .Spec.port }}
         resources:
           {{- toYaml .Spec.resources | nindent 10 }}
-      {{- with .Values.dns.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.dns.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
 ---
 # The service
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
-  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ .Namespace }}
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
     {{- if .Spec.service.isGCPNEG }}
@@ -229,13 +230,6 @@ metadata:
     {{- with .Spec.service.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  labels:
-    {{- include "safesurfer-dns.labels" . | nindent 4 }}
-{{- if .Values.dns.labels }}
-{{- with .Values.dns.labels }}
-    {{- toYaml . | nindent 4 }}
-{{- end }}
-{{- end }}
 spec:
   ports:
   - name: lmdb-feed
@@ -261,7 +255,7 @@ spec:
 {{- end }}
 {{- end }}
   selector:
-    app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+    app: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
 
 {{ if .Spec.ingress.enabled }}
 ---
@@ -271,17 +265,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
-  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.dns.namespace) }}
+  name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+  namespace: {{ .Namespace }}
+  {{- with .Spec.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
-    {{ if .Spec.ingress.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Spec.ingress.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Spec.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Spec.ingress.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Spec.ingress.class }}
   tls:
@@ -290,9 +279,9 @@ spec:
     {{- if .Spec.ingress.tls.secretName }}
     secretName: {{ .Spec.ingress.tls.secretName }}
     {{- else if (and .Values.testFlags .Values.testFlags.legacyNames) }}
-    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+    secretName: letsencrypt-prod-{{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
     {{- else }}
-    secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}-cert
+    secretName: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}-cert
     {{- end }}
   rules:
   - host: {{ .Spec.ingress.host }}
@@ -302,14 +291,14 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride) }}
+            name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride) }}
             port:
               number: {{ .Spec.service.port }}
 ---
 #
 # Cert and issuer
 #
-{{ include "cert" (dict "cert" .Spec.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" (printf "%s-%s" "lmdb-feed" .Name) "nameOverride" .Spec.nameOverride)) "namespace" .Values.dns.namespace "dnsNames" (list .Spec.ingress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Spec.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" .Name) "nameOverride" .Spec.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Spec.ingress.host) "Values" .Values "ingressClass" .Spec.ingress.class) }}
 {{- end }}
 {{- end }}
 {{- end }}

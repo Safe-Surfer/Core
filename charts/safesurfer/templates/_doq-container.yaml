@@ -1,0 +1,96 @@
+{{- define "doqContainer" }}
+- name: {{ include "doqContainerAndAppName" . }}
+  image: {{ .Values.dns.doq.image }}
+  securityContext:
+    {{- toYaml .Values.dns.doq.securityContext | nindent 4 }}
+  volumeMounts:
+  {{- range $idx, $_ := .Values.dns.doq.tls }}
+  - name: doq-certs-{{ $idx }}
+    mountPath: "/ssl/{{ $idx }}"
+    readOnly: true
+  {{- else }}
+  {{ fail "No DOQ cert provided" }}
+  {{- end }}
+  - name: lmdb
+    mountPath: /lmdb
+  ports:
+    - name: doq-udp
+      containerPort: {{ .Values.dns.doq.bindPort }}
+      protocol: UDP
+  env:
+    {{ include "loggingEnvs" (dict "level" .Values.dns.doq.logLevel) | indent 4 }}
+    - name: TZ
+      valueFrom:
+        configMapKeyRef:
+          name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+          key: timezone
+    # doq runs as a sidecar of the dns pod and forwards filtered "allow"
+    # queries to the co-located recursor over loopback.
+    - name: SS_DNS_SERVER
+      value: '127.0.0.1'
+    - name: APP_DNS_SERVER_PORT
+      value: {{ .Values.dns.dns.recursorPort | quote }}
+    - name: APP_HEALTH_PORT
+      value: '8891'
+    - name: BASE_HOSTNAME
+      value: {{ .Values.dns.doq.host | toString | quote }}
+    - name: APP_PORT
+      value: {{ .Values.dns.doq.bindPort | toString | quote }}
+    - name: SS_PROTO_QUERY_DOMAIN
+      value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
+    - name: SS_PROTO_QUERY_DOQ_DOMAIN
+      value: {{ .Values.protocolchecker.domains.doq }}.{{ .Values.protocolchecker.domains.base }}
+    - name: SS_PROTO_QUERY_ACTIVE_DOMAIN
+      value: {{ .Values.protocolchecker.domains.active }}.{{ .Values.protocolchecker.domains.base }}
+    - name: APP_CERT_FILES
+      value: '{{- range $idx, $_ := .Values.dns.doq.tls }}/ssl/{{ $idx }}/tls.crt,{{- end }}'
+    - name: APP_KEY_FILES
+      value: '{{- range $idx, $_ := .Values.dns.doq.tls }}/ssl/{{ $idx }}/tls.key,{{- end }}'
+    - name: APP_TLS_MAX_IDLE_KEEPALIVE
+      value: {{ .Values.dns.doq.maxIdleKeepalive }}
+    - name: APP_TLS_WRITE_TIMEOUT
+      value: {{ .Values.dns.doq.writeTimeout }}
+    - name: APP_MAX_TCP_CONNS
+      value: {{ .Values.dns.doq.tcpConns | int | quote }}
+    - name: APP_MAX_ATTEMPTS
+      value: {{ .Values.dns.doq.retries | int | quote }}
+    - name: APP_FRONTEND
+      value: doq
+    - name: APP_HEALTH_CHECK_HOSTNAME
+      value: {{ .Values.dns.dns.healthCheck.testDomain }}
+    - name: APP_HEALTH_CHECK_IGNORE_CERT
+      value: {{ .Values.dns.doq.healthCheck.ignoreCert | quote }}
+    - name: APP_TCP_TIMEOUT
+      value: {{ .Values.dns.doq.tcpTimeout }}
+    - name: APP_TCP_REUSE_TIMEOUT
+      value: {{ .Values.dns.doq.tcpReuseTimeout }}
+    - name: APP_SERVE_CERT_ONLY
+      value: {{ .Values.dns.doq.serveCertOnly | quote }}
+    {{ include "dnsPolicyEnvs" (dict "Values" .Values "Release" .Release) | indent 4 }}
+    {{- with .Values.dns.doq.extraEnv }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.dns.extraEnv }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      port: 8891
+  livenessProbe:
+    failureThreshold: 2
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      port: 8891
+  resources:
+    {{- toYaml .Values.dns.doq.resources | nindent 4 }}
+{{- end }}

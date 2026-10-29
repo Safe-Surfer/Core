@@ -1,0 +1,89 @@
+{{- define "plaindnsContainer" }}
+- name: {{ include "name" (dict "Release" .Release "name" "plaindns") }}
+  image: {{ .Values.dns.dns.plaindns.image }}
+  securityContext:
+    {{- toYaml .Values.dns.dns.plaindns.securityContext | nindent 4 }}
+  imagePullPolicy: IfNotPresent
+  volumeMounts:
+  - name: lmdb
+    mountPath: /lmdb
+  ports:
+    - name: plain-udp
+      containerPort: {{ .Values.dns.dns.bindPort }}
+      protocol: UDP
+    - name: plain-tcp
+      containerPort: {{ .Values.dns.dns.bindPort }}
+      protocol: TCP
+  env:
+    {{ include "loggingEnvs" (dict "level" .Values.dns.dns.plaindns.logLevel) | indent 4 }}
+    - name: TZ
+      valueFrom:
+        configMapKeyRef:
+          name: {{ include "name" (dict "Release" .Release "name" "dns" "nameOverride" .Values.dns.dns.nameOverride) }}
+          key: timezone
+    # The plaindns proxy owns the externally-facing DNS port, filters every
+    # query, and forwards "allow" queries to the co-located recursor over
+    # loopback.
+    - name: APP_FRONTEND
+      value: plaindns
+    - name: APP_PLAIN_DNS_PORT
+      value: {{ .Values.dns.dns.bindPort | toString | quote }}
+    - name: APP_PLAIN_DNS_BIND_ADDRESSES
+      value: {{ join "," .Values.dns.dns.plaindns.bindAddresses | quote }}
+    - name: SS_DNS_SERVER
+      value: '127.0.0.1'
+    - name: APP_DNS_SERVER_PORT
+      value: {{ .Values.dns.dns.recursorPort | quote }}
+    - name: APP_HEALTH_PORT
+      value: '8890'
+    - name: APP_HEALTH_CHECK_HOSTNAME
+      value: {{ .Values.dns.dns.healthCheck.testDomain }}
+    - name: SS_PROTO_QUERY_DOMAIN
+      value: {{ .Values.dns.dns.debugging.protoQueryDomain }}
+    - name: APP_MAX_TCP_CONNS
+      value: {{ .Values.dns.dns.plaindns.tcpConns | int | quote }}
+    - name: APP_MAX_ATTEMPTS
+      value: {{ .Values.dns.dns.plaindns.retries | int | quote }}
+    - name: APP_TCP_TIMEOUT
+      value: {{ .Values.dns.dns.plaindns.tcpTimeout }}
+    - name: APP_TCP_REUSE_TIMEOUT
+      value: {{ .Values.dns.dns.plaindns.tcpReuseTimeout }}
+    {{ include "dnsPolicyEnvs" (dict "Values" .Values "Release" .Release) | indent 4 }}
+    {{- with .Values.dns.dns.plaindns.extraEnv }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.dns.extraEnv }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      port: 8890
+  livenessProbe:
+    failureThreshold: 2
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    successThreshold: 1
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      port: 8890
+  # The self health check resolves a real domain through policy + recursor +
+  # upstream, so it can transiently fail while the recursor starts up. Let
+  # the startup probe absorb that instead of entering a kill loop with the
+  # recursor container's own probes.
+  startupProbe:
+    failureThreshold: 60
+    periodSeconds: 5
+    timeoutSeconds: 5
+    httpGet:
+      path: /
+      port: 8890
+  resources:
+    {{- toYaml .Values.dns.dns.plaindns.resources | nindent 4 }}
+{{- end }}

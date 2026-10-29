@@ -74,15 +74,212 @@ data:
       approval-required:
         routes:
         - 214 # Remove restriction
+        - 175 # Initialize alert emails
         {{- if .Values.api.accounts.approvalRequiredEndpoints }}
         {{- toYaml .Values.api.accounts.approvalRequiredEndpoints | nindent 8 }}
         {{- end }}
       verify-email:
         routes:
         - 214 # Remove restriction
+        - 175 # Initialize alert emails
         {{- if .Values.api.accounts.verifyEmailEndpoints }}
         {{- toYaml .Values.api.accounts.verifyEmailEndpoints | nindent 8 }}
         {{- end }}
+      # Session exchanged from a linked account. Allow-list: a route stays closed
+      # until its ID is added here. Left off on purpose:
+      # 17 password, 18 sign out everywhere, 19-20 email verification, 88 delete account
+      # 85 communications-consent write, 217 post-approval
+      # 155 narrow roles, 214 lift restrictions, 307 device token
+      # 159 device HMAC
+      # 183-184 app sign-in codes are allowed. A linked session may only store
+      # android, windows, macos, or crx, and only when that role cannot mint a token.
+      # 158 router auth is allowed. A linked session may only grant it for a
+      # role that cannot mint a token.
+      # 160, 162-165, 229 two-factor changes (161, reading status, stays allowed)
+      # 316-324 link management, invitations, and the exchange itself
+      linked-account:
+        routes:
+        - 11 # Refresh subscription claims on this token
+        - 39 # DNS token
+        - 40 # Rename device
+        - 41 # Device name
+        - 42 # Put device IP
+        - 43 # Put current device IP
+        - 44 # Lifeguard client
+        - 46 # Protection status
+        - 47 # Get device
+        - 48 # List devices
+        - 49 # Add device
+        - 53 # Web push subscription
+        - 55 # Cast event image
+        - 56 # Cast event
+        - 57 # Delete cast event
+        - 58 # Add cast event
+        - 59 # Cast events
+        - 60 # Stop cast
+        - 61 # Add cast
+        - 62 # List casts
+        - 71 # Delete VPN attempt
+        - 72 # VPN attempts
+        - 73 # Add VPN attempt
+        - 74 # VPN IPs
+        - 77 # Logging enabled
+        - 78 # Set logging
+        - 79 # Full history
+        - 80 # Set full history
+        - 81 # Block page
+        - 82 # Set block page
+        - 83 # Referred by
+        - 84 # Communications consent
+        - 86 # Timezone
+        - 87 # Set timezone
+        - 115 # Delete legacy deadline
+        - 119 # Delete evasion attempt
+        - 120 # Add evasion attempt
+        - 122 # Self-service token
+        - 123 # Enable self-service token
+        - 124 # Delete self-service token
+        - 125 # Lifeguard diagnostic report
+        - 126 # Sign out a device
+        - 127 # Device Apple config
+        - 128 # Delete device
+        - 129 # Notification log
+        - 130 # Add notification
+        - 131 # Notification keywords
+        - 132 # Notification apps
+        - 133 # Notification
+        - 134 # Delete notification
+        - 135 # Usage history
+        - 136 # Delete usage history
+        - 137 # Delete all usage history
+        - 138 # Usage activity
+        - 139 # Blocked sites
+        - 140 # Blocked categories
+        - 141 # Viewed categories
+        - 142 # Last activity
+        - 158 # Register or re-authenticate a router
+        - 161 # Two-factor status
+        - 166 # Account live updates
+        - 167 # Device version
+        - 169 # Delete router client
+        - 171 # Account email
+        - 172 # Alerts
+        - 173 # Alerts with filter
+        - 174 # Alert emails
+        - 175 # Add alert email
+        - 176 # Update alert email
+        - 177 # Delete alert email
+        - 178 # Dismiss alerts
+        - 179 # Alert email
+        - 180 # Usage insights
+        - 181 # Delete device IP
+        - 183 # Create an app sign-in code
+        - 184 # App sign-in code image
+        - 188 # Quota
+        - 190 # Security alerts
+        - 191 # Add security ignore rule
+        - 192 # Security ignore rules
+        - 193 # Delete security ignore rule
+        - 194 # Delete security alerts
+        - 197 # Security alert usage
+        - 199 # Delete cast
+        - 200 # Subscription
+        - 202 # Create subscription
+        - 203 # Cancel subscription
+        - 204 # Reactivate subscription
+        - 205 # Delete subscription addon
+        - 206 # Update subscription addon
+        - 207 # Checkout redirect
+        - 208 # Payment methods
+        - 209 # Subscription estimate
+        - 210 # Quotas
+        - 211 # Addon estimate
+        - 212 # Reactivation estimate
+        - 215 # User data
+        - 216 # Set user data
+        - 220 # Add apps
+        - 221 # Delete app
+        - 222 # Put apps
+        - 223 # Get and enable self-service token
+        - 226 # Device IPv6
+        - 227 # This-device app blocking live updates
+        - 228 # This-device timer running statuses
+        - 230 # Plans by category
+        - 231 # This-device resolved category
+        - 232 # This-device timer running
+        - 233 # Device metadata
+        - 234 # Set device metadata
+        - 235 # Delete device metadata
+        - 236 # This-device metadata
+        - 237 # Category base ruleset
+        - 238 # Apps
+        - 239 # App base ruleset
+        - 240 # Add location history
+        - 241 # Location history
+        - 242 # Delete location history
+        - 243 # Delete all location history
+        - 244 # Addon modification estimate
+        - 245 # Modify addons
+        - 246 # Change plan
+        - 247 # Plan estimate
+        - 248 # Notification with screenshot
+        - 249 # Notification image
+        - 250 # Categories
+        - 251 # App metadata
+        - 252 # Usage categories
+        - 253 # Device list
+        - 254 # Device connections
+        - 255 # Group delete preview
+        - 256 # Add device
+        - 257 # Category metadata
+        - 258 # Set group preview
+        - 259 # Set device group
+        - 260 # Delete group preview
+        - 261 # Delete device group
+        - 262 # Device group icon
+        - 263 # Blocking
+        - 264 # Add deadline
+        - 265 # Add timer
+        - 266 # Add timetable
+        - 267 # Update deadline
+        - 268 # Update timer
+        - 269 # Update timetable
+        - 270 # Delete deadline
+        - 271 # Delete timer
+        - 272 # Delete timetable
+        - 273 # Timer running
+        - 276 # Blocking changes
+        - 277 # iOS removal password
+        - 281 # Create session
+        - 282 # End session
+        - 283 # Session screen event
+        - 284 # Session screen image
+        - 285 # Session notification
+        - 286 # Sessions
+        - 287 # Session events
+        - 288 # Nudity detection confidence
+        - 289 # Text ignore rule
+        - 290 # Delete session event
+        - 291 # Delete session
+        - 292 # Set session preferences
+        - 293 # Session preferences
+        - 294 # This-device session preferences
+        - 295 # Screencast events
+        - 296 # Session screen image
+        - 297 # Session heartbeat
+        - 299 # Report session event
+        - 300 # Blocking plans
+        - 301 # This-device blocking live updates
+        - 303 # Device live updates
+        - 304 # Screen event history
+        - 305 # Clear session events
+        - 308 # Delete subscription
+        - 309 # App usage
+        - 310 # Delete app usage
+        - 311 # App usage timeline
+        - 312 # App usage summary
+        - 314 # Search
+        - 315 # App usage by device
     {{- if .Values.api.rolesConfig }}
       {{- toYaml .Values.api.rolesConfig | nindent 6 }}
     {{- end }}

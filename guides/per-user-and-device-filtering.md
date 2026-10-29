@@ -199,15 +199,15 @@ There are two different methods of specifying a custom user and/or device to the
 - A DNS token and/or MAC address can be provided to the DNS as [EDNS options](https://en.wikipedia.org/wiki/Extension_Mechanisms_for_DNS). When using DOH or DOT, the path or subdomain respectively form the DNS token, which is forwarded to the DNS. For plain DNS, the provisioned iptables rules protect against amplification attacks. The MAC address may be used on its own, or in combination with the DNS token to identify a client device on the user's network.
 
 ### IP Linking
-To set up IP linking, let's check that the API is recognizing our source IP correctly. Navigate to the `Devices -> New Device -> Advanced` section of the dashboard.
+To set up IP linking, let's check that the API is recognizing our source IP correctly. On the Devices page, choose **Create device**. This dashboard only offers Advanced DNS, so the name form opens directly. If you start from a group, the device is added to that group.
 
 ![](./img/dashboard-3.png)
 
-Check "Link my IP to this device" and hit "Accept". On the next page, hit "Done". You should see something like the following:
+Check "Link my IP to this device" and hit "Accept". The next step confirms that your current IP has been linked for plain DNS. Hit "Done". The new device opens on the Devices page:
 
 ![](./img/dashboard-4.png)
 
-Then hit "Connect" and expand the "Plain DNS" section. If you're port-forwarding, you should see the IP `127.0.0.1`, or if using an ingress, it should be your IP address. If you're using an ingress and don't see an IP matching your IP address, you'll need to modify the value of `api.realIPHeader`. Once the IP address looks correct, hit the button to link it.
+Then hit "Connect" and expand the "Plain DNS" section. If you're port-forwarding, the linked IP is `127.0.0.1`. If you're using an ingress, it should be your IP address. If you're using an ingress and the linked address is not your IP, modify `api.realIPHeader`. The Link button stays disabled once that address is already linked. This dashboard does not list plain DNS server addresses on this screen. The DoH and DoT lines show the device's DNS token.
 
 ![](./img/dashboard-5.png)
 
@@ -215,11 +215,9 @@ After creating the device, we're also ready to use the DNS token method. Now let
 
 ## Custom settings and screentime
 
-On the device you created, hit "Block Sites". You should see something like the following if you set up categories in the getting started guide:
+On the device you created, hit "Blocking". Block the News category for that device, and set Google to "No filtering". You should see something like the following if you set up categories in the getting started guide:
 
 ![](./img/dashboard-6.png)
-
-You can do whatever you like here, as long as it's different to before and you hit save. For example, block the News category and set filtering on Google to "No Filtering".
 
 Now let's query the DNS according to how you had it set up in the getting started guide.
 
@@ -250,9 +248,8 @@ You should see a result like this (example for `dig`), identifying your account 
 ;account.safesurfer.            IN      TXT
 
 ;; ANSWER SECTION:
-account.safesurfer.     3600    IN      TXT     "Device ID: \"vb28EefpHNdnZ6Om\""
-account.safesurfer.     3600    IN      TXT     "Account ID: \"1\""
-account.safesurfer.     3600    IN      TXT     "Lookup table: ip"
+account.safesurfer.     0       IN      TXT     "Account ID: \"1\""
+account.safesurfer.     0       IN      TXT     "Device ID: \"QmDvhzmEb6bo6uF7\""
 
 ;; Query time: 239 msec
 ;; SERVER: xx.xx.xx.xx#53(xx.xx.xx.xx) (UDP)
@@ -260,7 +257,7 @@ account.safesurfer.     3600    IN      TXT     "Lookup table: ip"
 ;; MSG SIZE  rcvd: 146
 ```
 
-If you see an account ID of `0` and no `Device ID` or `Lookup table` information, check that the DNS and the API are seeing the same source IP.
+If you see an account ID of `0` and no `Device ID`, check that the DNS and the API are seeing the same source IP.
 
 You can also test your rules now, e.g. if you blocked `News` and un-restricted `Google`, you'd see something like this:
 
@@ -289,7 +286,7 @@ kubectl port-forward svc/safesurfer-api-admin-internal 8088:80
 Modify the IP for the device you created. You'll need to find the device ID for this, you can find it in the URL on the device page, e.g. `device-id=vb28EefpHNdnZ6Om`. Now make a request with admin auth:
 
 ```sh
-curl http://localhost:8088/device/device/$DEVICE_ID/ip -d "ip=$IP" -H "X-Safe-Surfer-Api-Admin-Mock-User: $USER_ID" -H "X-Safe-Surfer-Api-Admin-Secret: $ADMIN_SECRET"
+curl -X PUT http://localhost:8088/devices/device/$DEVICE_ID/ip -d "ip=$IP" -H "X-Safe-Surfer-Api-Admin-Mock-User: $USER_ID" -H "X-Safe-Surfer-Api-Admin-Secret: $ADMIN_SECRET"
 ```
 
 Where:
@@ -330,9 +327,8 @@ Substitute `f78665c852af42b687efd0a0333916f4` for your own UUID. You should see 
 ;account.safesurfer.            IN      TXT
 
 ;; ANSWER SECTION:
-account.safesurfer.     3600    IN      TXT     "Device ID: \"vb28EefpHNdnZ6Om\""
-account.safesurfer.     3600    IN      TXT     "Lookup table: uuid"
-account.safesurfer.     3600    IN      TXT     "Account ID: \"1\""
+account.safesurfer.     0       IN      TXT     "Account ID: \"1\""
+account.safesurfer.     0       IN      TXT     "Device ID: \"QmDvhzmEb6bo6uF7\""
 
 ;; Query time: 240 msec
 ;; SERVER: xx.xx.xx.xx#53(xx.xx.xx.xx) (UDP)
@@ -341,7 +337,7 @@ account.safesurfer.     3600    IN      TXT     "Account ID: \"1\""
 
 ```
 
-The result should be the same as before, but now with `uuid` as the `Lookup table`. In general, a DNS token is a better method of identifying a device, and should be used instead of IP linking where possible.
+The result names the same account and device as the IP-linked query. The DNS token identifies the device even when the source IP is not linked to it. In general, a DNS token is a better method of identifying a device, and should be used instead of IP linking where possible.
 
 ### Using a MAC address
 The Safe Surfer router integration syncs devices on the user's local network with the Safe Surfer API, and uses a combination of a DNS token + MAC address to identify each device. Since there are many possible setups, the router integration isn't publicly available, rather we can configure it according to your needs. For this demo, we'll use the API and dashboard to show what's possible.
@@ -415,7 +411,7 @@ Now let's check that the DNS can see our new device.
 dig @$DNS_IP "+ednsopt=65001:000000000000" "+ednsopt=65002:$(echo $DNS_TOKEN | tr -d '-')" account.safesurfer TXT
 ```
 
-The `Lookup table` should now be `uuidmac`:
+The device ID is the router ID, a hyphen, and the MAC with the colons removed:
 
 ```
 ; <<>> DiG 9.16.1-Ubuntu <<>> @xx.xx.xx.xx +ednsopt +ednsopt account.safesurfer TXT
@@ -431,9 +427,8 @@ The `Lookup table` should now be `uuidmac`:
 ;account.safesurfer.            IN      TXT
 
 ;; ANSWER SECTION:
-account.safesurfer.     3600    IN      TXT     "Account ID: \"1\""
-account.safesurfer.     3600    IN      TXT     "Lookup table: uuidmac"
-account.safesurfer.     3600    IN      TXT     "Device ID: \"SuVIMPYCzQ3vP2Ev-000000000000\""
+account.safesurfer.     0       IN      TXT     "Account ID: \"1\""
+account.safesurfer.     0       IN      TXT     "Device ID: \"72W1Q8QZk4wdyuZn-000000000000\""
 
 ;; Query time: 247 msec
 ;; SERVER: xx.xx.xx.xx#53(xx.xx.xx.xx)
@@ -446,8 +441,8 @@ Now you can edit the settings for the router client and see them update on the D
 ### Screentime
 There are three kinds of screentime restriction that you can add to any device:
 - Timetables restrict access by the time of the day or week.
-- Timers restrict access to an *amount* of time per day. Either an admin or the user of the device may choose when to use the time.
-- Deadlines (Stop/Start access on the dashboard) last for a certain duration and override the above two. They are useful to reward/deny screentime manually.
+- Timers restrict access to an *amount* of time per day. On the dashboard these are the Limit tab. Either an admin or the user of the device may choose when to use the time.
+- Overrides (deadlines) last for a certain duration and take priority over the other two. On the dashboard these are the Override tab. They are useful to reward or deny access manually.
 
 Each of the restrictions can apply to particular categories, restrictions, or domains, or they can block the internet entirely.
 
@@ -455,22 +450,25 @@ The DNS will respond to the current screentime restrictions by filtering request
 
 Any kind of device can listen to the [live updates websocket](https://safesurfer.gitlab.io/api-docs/#tag/userv2/operation/getLiveUpdates) of the API, which will send the current block state across every category according to the screentime rules.
 
-To test it out, let's add a timer to the router client device we created. You can do this for any device, but you'll need to update the `dig` commands accordingly.
+To test it out, let's add a limit to the router client device we created. You can do this for any device, but you'll need to update the `dig` commands accordingly.
 
-Navigate to the `Screentime Timers` page and select the device. Then start adding a timer:
+Open Blocking and select that client. `Time limit/Override` starts a new rule on the device:
 
 ![](./img/dashboard-10.png)
 
-Choose an amount of time, and a day that applies to you currently:
+Limit is selected by default. Checked categories and sites are allowed only while the timer is running, and blocked the rest of the time. The limit starts at 1 hour on all days. Choose an amount of time, and a day that includes today:
 
 ![](./img/dashboard-11.png)
 
-Choose categories and domains to allow while the timer is running:
+Check the categories to include in the limit. News is included here:
 
 ![](./img/dashboard-12.png)
+
+On Sites, add the domains to include. `safesurfer.io` is included here:
+
 ![](./img/dashboard-13.png)
 
-Add and save the timer:
+Apply saves the limit. The dashboard then offers a self-service link so the person using the device can start and stop the timer. Dismiss that if you are only testing from an admin sign-in. The limit is stored on the device and the timer is stopped, so the included items stay blocked until someone starts it:
 
 ![](./img/dashboard-14.png)
 
@@ -494,15 +492,15 @@ xx.xxx.xxx.xx
 
 If the timer is started, these domains would then be allowed. You can achieve the same with restrictions, e.g. our `Google` restriction, by adding a blockable category for it in the admin app.
 
-Now let's try blocking the internet for an amount of time using the deadline rules - labelled as "Pause Internet" on the dashboard. Navigate to that page, then the device we created, then hit `Block/Allow`. Select `Block Internet`:
+An override pauses or allows particular categories and sites for a fixed time, and it takes priority over limits and schedules. Open `Time limit/Override` again and choose `Override`. Pick how long it lasts. 15 minutes is selected here:
 
 ![](./img/dashboard-15.png)
 
-Select an amount of time and confirm:
+Block the items to pause, then Apply. Search Engines is set to block here. The row changes to `Undo block` until you apply:
 
 ![](./img/dashboard-16.png)
 
-Now you should find that all DNS requests are blocked for the device:
+`google.com` is in Search Engines on this deployment, so the override blocks it for the client until it expires:
 
 ```sh
 $ dig +short @$DNS_IP "+ednsopt=65001:000000000000" "+ednsopt=65002:$(echo $DNS_TOKEN | tr -d '-')" google.com
@@ -512,7 +510,7 @@ block.ss.example.com.
 xx.xxx.xxx.xx
 ```
 
-At the moment, that also includes the dashboard itself, if you've created an ingress:
+There is no separate Block Internet button on this screen. Blocking every site is the built-in All Sites category. That category stays off the list while `Display` is off, so an override can only block the categories and sites you can see. A deadline that blocks All Sites does block other names, and it also blocks the dashboard if you have created an ingress:
 
 ```sh
 $ dig +short @$DNS_IP "+ednsopt=65001:000000000000" "+ednsopt=65002:$(echo $DNS_TOKEN | tr -d '-')" frontend.ss.example.com
@@ -527,7 +525,7 @@ This could present a problem, since for the user to start and stop timers and vi
 ![](./img/categories-5.png)
 ![](./img/categories-6.png)
 
-Check `IP Blocking Enabled` to ensure the IPs of domains in this category are allowed through the router firewall as well.
+Check `Is Global Whitelist` so domains in this category are never blocked, whichever other rules apply. Also check `IP Blocking Enabled` so the router firewall allows the addresses of those domains through as well. Leave `Display` off if this category is only for the admin app.
 
 Now add any domains that should always be allowed to this category. If you're using a particular domain for all safe surfer deployments, you can check `Include Subdomains` at the top and then just add a single domain.
 
@@ -547,7 +545,7 @@ While there's more screentime features to play with, they don't have anything in
 ## Browsing history
 Safe Surfer features powerful DNS logging that can be queried and filtered in real time. Alerts capture any interesting or dangerous content for viewing in the UI or via email.
 
-This feature is powered by [clickhouse](https://clickhouse.com), a seriously scalable open-source columnar database. Like postgres, the chart offers to option to manage an internal instance using [clickhouse operator](https://github.com/Altinity/clickhouse-operator), or connect to any externally hosted instance such as [clickhouse cloud](https://clickhouse.cloud).
+This feature is powered by [clickhouse](https://clickhouse.com), a seriously scalable open-source columnar database. Like postgres, the chart offers the option to manage an internal instance using [clickhouse operator](https://github.com/Altinity/clickhouse-operator), or connect to any externally hosted instance such as [clickhouse cloud](https://clickhouse.cloud).
 
 Browsing history is kept for 90 days, or can be deleted manually per item, user, or device.
 
@@ -555,8 +553,10 @@ Browsing history is kept for 90 days, or can be deleted manually per item, user,
 To create an internal clickhouse instance, install [clickhouse operator](https://github.com/Altinity/clickhouse-operator) in your cluster:
 
 ```sh
-kubectl apply -f "https://raw.githubusercontent.com/Altinity/clickhouse-operator/master/deploy/operator/clickhouse-operator-install-bundle.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/Altinity/clickhouse-operator/0.23.7/deploy/operator/clickhouse-operator-install-bundle.yaml"
 ```
+
+Pin `0.23.7` rather than `master`. Current `master` requires ClickHouse 21.11 or newer, and this chart still runs `yandex/clickhouse-server:21.3`. Operator releases before `0.16.0` only support Kubernetes before 1.22, so they will not start on a current cluster. `0.23.7` runs on Kubernetes 1.25+ and still supports this ClickHouse version.
 
 This will install clickhouse operator to the `kube-system` namespace. After running `kubectl -n kube-system get pods`, you should see something like the following in the list:
 
@@ -575,18 +575,19 @@ clickhouse:
     password: generate-a-strong-password
     persistence:
       enabled: true
-      ## Leave as default for now, but reconsider for production. Should be a quick SSD storage class ideally.
-      storageClass: default
+      ## The StorageClass name in this cluster. Kind's default class is named standard, not default.
+      ## Use a quick SSD class in production.
+      storageClass: standard
       ## Tone this down for testing. Can be expanded later.
       size: 1Gi
-    ## Tone resources down for testing.
+    ## Tone resources down for testing. 256Mi is OOMKilled once query logs start arriving; 1Gi is enough for a small test instance.
     resources:
       requests:
         cpu: "50m"
-        memory: "256Mi"
+        memory: "512Mi"
       limits:
         cpu: "100m"
-        memory: 256Mi
+        memory: 1Gi
 ```
 
 After upgrading the release, run `kubectl get pods` to see the new clickhouse pod:
@@ -652,7 +653,7 @@ dns:
 ```
 
 Now clickhoused will collect logs from the DNS and upload them to clickhouse in batches. If the DNS is deployed outside the cluster where clickhouse resides, there are two choices:
-- If the DNS is outside the cluster but within the same internal network, you can edit `dns.clickhouse.internal.frontend.udp.serviceAnnotations` to create an internal load balancer. The exact method depends on your kubernetes platform. If you use this method, you should ensure UDP communication is reliable enough within your internal network. For more details, see the "Internal load balancer setup" section below.
+- If the DNS is outside the cluster but within the same internal network, you can edit `dns.clickhoused.internal.frontend.udp.serviceAnnotations` to create an internal load balancer. The exact method depends on your kubernetes platform. If you use this method, you should ensure UDP communication is reliable enough within your internal network. For more details, see the "Internal load balancer setup" section below.
 - If the DNS is not within the same internal network, you can enable the HTTP(s) frontend of clickhoused in the cluster where clickhouse resides, then enable the HTTP(s) backend of clickhoused in the DNS cluster/servers. For more details, see the "HTTP setup" section below.
 
 ### Internal load balancer setup
@@ -700,7 +701,7 @@ In the `values.yaml` of the cluster where clickhouse resides, set something like
 
 ```yaml
 dns:
-  clickhouse:
+  clickhoused:
     internal:
       enabled: true
       frontend:
@@ -709,8 +710,11 @@ dns:
         http:
           secret: generate-a-strong-secret
           host: clickhoused.ss.example.com
-          ## Uncomment to restrict ingress by source IP
-          # whitelistSourceRange: 0.0.0.0/32,1.1.1.1/32
+          ingressClass: traefik
+          ## Uncomment to allow only some source addresses. The middleware is a
+          ## Traefik ipAllowList in customManifests. See the ingress and cert guide.
+          # ingressAnnotations:
+          #   traefik.ingress.kubernetes.io/router.middlewares: default-clickhoused-ipallowlist@kubernetescrd
           ## Uncomment to configure TLS, or leave blank to use HTTP01 validation.
           ## See the ingress and cert guide.
           # tls:
@@ -758,7 +762,7 @@ NAME                                          READY   STATUS        RESTARTS   A
 safesurfer-clickhoused-77c9ccb96-mj9sl        1/1     Running       0          47s
 ```
 
-Now you should be able to run the same `dig` commands as above to see the browsing history start to come in. E.g:
+Now you should be able to run the same `dig` commands as above to see the browsing history start to come in. Then repeat the earlier queries, for example:
 
 ```sh
 dig +short @$DNS_IP "+ednsopt=65001:000000000000" "+ednsopt=65002:$(echo $DNS_TOKEN | tr -d '-')" nytimes.com
@@ -771,7 +775,7 @@ Alternatively, you can switch your DNS to the newly hosted server to see more re
 
 ![](./img/dashboard-17.png)
 
-The `Browsing History` page should also have begun to populate:
+The Browsing history page should also have begun to populate. Its tabs are Blocked, Accessed, History, Activity, and Insights:
 
 ![](./img/dashboard-18.png)
 ![](./img/dashboard-19.png)
@@ -780,7 +784,9 @@ The `Browsing History` page should also have begun to populate:
 The `Insights` tab will populate once there is usage data spanning at least double the period of the query, e.g. two weeks for the default date range.
 
 ### Alerts
-Alerts summarize all interesting account activity to make browsing data easier to digest. To make it even easier, they are automatically emailed to users along with the `Insights` from the browsing history page. To enable this feature, you'll need to add a [sendgrid](https://sendgrid.com) API key to the deployment and enable the `mailbot`. Overwrite the following keys in your `values.yaml`:
+Alerts summarize notable account activity, such as a blocked site or a device joining, so it is easier to review than the full browsing history. The dashboard shows that list with no email setup. Open **More → Alerts**.
+
+Emailing the summary is separate. The mailbot CronJob collects the alerts and the API sends the message through [SendGrid](https://sendgrid.com). The in-dashboard list does not use that key. To send the emails, add a SendGrid API key and enable the `mailbot`. Overwrite the following keys in your `values.yaml`:
 
 ```yaml
 api:
@@ -796,6 +802,21 @@ api:
             members:
             # Update this to change the text that displays for an alert for a device with no recent activity
             - text: '(Check BRAND_NAME is still running)'
+          # Optional override for when only browser-extension activity has dropped off
+          # (defaults in api/static-res/strings.yaml if omitted).
+          no_activity_extension_alert_display:
+          - text: 'No recent browser-extension activity for '
+          - field: device
+          - text: ' '
+          - field: check
+            members:
+            - text: '(Check the browser extension is still installed and signed in)'
+          # Optional: parent row when several NOACTIVITY alerts are merged across devices
+          # (defaults in api/static-res/strings.yaml if omitted).
+          no_activity_alert_summary_display:
+          - text: 'No recent activity for '
+          - field: count
+          - text: ' devices.'
   sendgrid:
     apiKey: my-api-key
     ## Create a sender in the "Marketing" tab of sendgrid. These are not marketing emails, this just happens to be
@@ -847,14 +868,16 @@ safesurfer-daily-cleanup   30 2 * * *    False     0        22h             7d1h
 safesurfer-mailbot         1 */1 * * *   False     0        <none>          32s
 ```
 
-The cronjob runs at 1 minute past every hour. Note the name of your `mailbot` cronjob, e.g. `safesurfer-mailbot`. We'll need it later. To see what the email looks like, we'll need to edit our alert settings so that the email sends in the current hour, then run the cronjob manually. In the dashboard, navigate to the `Alerts -> Emails` page. Two emails are created by default. Edit the one labelled `Only sent if there are new alerts`.
+The cronjob runs at 1 minute past every hour. Note the name of your `mailbot` cronjob, e.g. `safesurfer-mailbot`. We'll need it later. To see what the email looks like, edit an alert schedule so that it sends in the current hour, then run the cronjob manually.
+
+Open **More → Alerts**, then **Email settings** from the menu on that page. The page is titled **Alert emails**. When the account is created in the dashboard, two schedules are created: a daily email labelled `Only sent if there are new alerts` (also `Only medium priority`), and a weekly email labelled `Include activity summary`. A user created through the admin app starts with an empty list; add those two schedules there if you want the same setup. The button is `Add an email schedule`. Edit the daily schedule.
 
 ![](./img/dashboard-21.png)
 
 > **Warning**
 > We're about to send alert emails manually. Doing this in production will likely send duplicate emails.
 
-Change the "Email Hour" to the current hour, then hit `Done` and `Save`. Now, send the email manually by running `kubectl create job send-mail --from=cj/safesurfer-mailbot`. Now run `kubectl get pods`. You should see something like the following in the list:
+Open `Email time` and set `Email hour (24-hour)` to the current hour, then hit `Done` and `Save`. Sending still needs the SendGrid API key and the mailbot from above. Then send the email manually by running `kubectl create job send-mail --from=cj/safesurfer-mailbot`. Now run `kubectl get pods`. You should see something like the following in the list:
 
 ```
 NAME                                          READY   STATUS      RESTARTS   AGE

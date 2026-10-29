@@ -63,6 +63,20 @@ type: Opaque
 data:
   secret: {{ required "Non-managed accounts and alerts require a sendgrid API key" .Values.api.sendgrid.apiKey | b64enc | quote }}
 {{ end }}
+{{- if .Values.api.sessions.imageEncryptionKey }}
+---
+#
+# Secret for session image encryption
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-session-encryption
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+type: Opaque
+data:
+  key: {{ .Values.api.sessions.imageEncryptionKey | b64enc | quote }}
+{{- end }}
 ---
 #
 # Secret for web-push vapid private key.
@@ -107,6 +121,42 @@ data:
 #
 {{- if .Values.api.nudityDetectionProvider }}
 {{- include "nudityDetectionProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.nudityDetectionProvider "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# session nudity detection secret, if any
+#
+{{- if .Values.api.sessionNudityDetectionProvider }}
+{{- include "nudityDetectionProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.sessionNudityDetectionProvider "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# session text classification secret, if any
+#
+{{- if .Values.api.sessionTextClassificationProvider }}
+{{- include "textClassificationProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.sessionTextClassificationProvider "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# session text classification secret, if any
+#
+{{- if .Values.api.sessionTextClassificationProvider2 }}
+{{- include "textClassificationProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.sessionTextClassificationProvider2 "targetNamespace" .Values.api.namespace) }}
+{{- end }}
+{{- end }}
+---
+{{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+#
+# session storage secret, if any
+#
+{{- if .Values.api.sessionStorageProvider }}
+{{- include "storageProviderSecret" (dict "Release" .Release "Values" .Values "key" .Values.api.sessionStorageProvider "targetNamespace" .Values.api.namespace) }}
 {{- end }}
 {{- end }}
 ---
@@ -204,6 +254,18 @@ spec:
         {{- if .Values.api.nudityDetectionProvider }}
         checksum/nuditydetection: {{ include "nudityDetectionProviderObject" (dict "Values" .Values "key" .Values.api.nudityDetectionProvider) | sha256sum }}
         {{- end }}
+        {{- if .Values.api.sessionNudityDetectionProvider }}
+        checksum/session-nuditydetection: {{ include "nudityDetectionProviderObject" (dict "Values" .Values "key" .Values.api.sessionNudityDetectionProvider) | sha256sum }}
+        {{- end }}
+        {{- if .Values.api.sessionTextClassificationProvider }}
+        checksum/session-textclassification: {{ include "textClassificationProviderObject" (dict "Values" .Values "key" .Values.api.sessionTextClassificationProvider) | sha256sum }}
+        {{- end }}
+        {{- if .Values.api.sessionTextClassificationProvider2 }}
+        checksum/session-textclassification2: {{ include "textClassificationProviderObject" (dict "Values" .Values "key" .Values.api.sessionTextClassificationProvider2) | sha256sum }}
+        {{- end }}
+        {{- if .Values.api.sessionStorageProvider }}
+        checksum/session-storage: {{ include "storageProviderObject" (dict "Release" .Release "Values" .Values "key" .Values.api.sessionStorageProvider) | sha256sum }}
+        {{- end }}
     spec:
       imagePullSecrets:
       - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
@@ -236,6 +298,42 @@ spec:
           secretName: {{ include "name" (dict "Release" .Release "name" (printf "nuditydetection-config-%s" .Values.api.nudityDetectionProvider)) }}
           {{- end }}
       {{- end }}
+      {{- if .Values.api.sessionNudityDetectionProvider }}
+      - name: session-nuditydetection
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: nuditydetection-config-{{ .Values.api.sessionNudityDetectionProvider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "nuditydetection-config-%s" .Values.api.sessionNudityDetectionProvider)) }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.api.sessionTextClassificationProvider }}
+      - name: session-textclassification
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: textclassification-config-{{ .Values.api.sessionTextClassificationProvider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "textclassification-config-%s" .Values.api.sessionTextClassificationProvider)) }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.api.sessionTextClassificationProvider2 }}
+      - name: session-textclassification-2
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: textclassification-config-{{ .Values.api.sessionTextClassificationProvider2 }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "textclassification-config-%s" .Values.api.sessionTextClassificationProvider2)) }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.api.sessionStorageProvider }}
+      - name: session-storage
+        secret:
+          {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
+          secretName: storage-config-{{ .Values.api.sessionStorageProvider }}
+          {{- else }}
+          secretName: {{ include "name" (dict "Release" .Release "name" (printf "storage-config-%s" .Values.api.sessionStorageProvider)) }}
+          {{- end }}
+      {{- end }}
       - name: routes-config
         configMap:
           {{- if (and .Values.testFlags .Values.testFlags.legacyNames) }}
@@ -251,6 +349,8 @@ spec:
       - name: pq-emptydir
         emptyDir:
           medium: Memory
+      - name: tmp-volume
+        emptyDir: {}
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
 
       containers:
@@ -275,7 +375,6 @@ spec:
             value: {{ .Values.api.maxIdleConns | int | quote }}
           - name: APP_PG_MAX_OPEN_CONNS
             value: {{ .Values.api.maxOpenConns | int | quote }}
-          {{ include "emailEnvs" . | indent 10 }}
 
           # admin internal
           {{ include "apiInternalConnection" . | indent 10 }}
@@ -284,6 +383,110 @@ spec:
 
           - name: APP_CORS_ALLOWED_ORIGINS
             value: 'https://{{.Values.frontend.ingress.host}}{{- if .Values.categorizer.adminApp.ingress.host }},https://{{.Values.categorizer.adminApp.ingress.host}}{{- end }}{{- if .Values.api.cors.extraOrigins }},{{ .Values.api.cors.extraOrigins }}{{- end }}'
+
+          # blocking feed
+          {{- if .Values.feeds.blocking.default.enabled }}
+          - name: APP_BLOCKING_FEED_ENABLED
+            value: '1'
+          - name: APP_BLOCKING_FEED_MAP_SIZE
+            value: {{ .Values.feeds.blocking.default.mapSize }}
+          - name: APP_BLOCKING_FEED_PATH
+            value: /tmp/blocking_feed
+          - name: APP_BLOCKING_FEED_MAX_RECV_SIZE
+            value: 128MB
+          - name: APP_BLOCKING_FEED_MESSAGE_TIMEOUT
+            value: {{ .Values.feeds.blocking.default.messageTimeout }}
+          - name: APP_BLOCKING_FEED_HOST
+            value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.blocking.default.service.port }}
+          - name: APP_BLOCKING_FEED_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}-auth
+                key: username
+          - name: APP_BLOCKING_FEED_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}-auth
+                key: password
+          {{- end }}
+
+          # sub feed
+          {{- if .Values.feeds.subscription.default.enabled }}
+          - name: APP_SUB_FEED_ENABLED
+            value: '1'
+          - name: APP_SUBSCRIPTION_FEED_MAP_SIZE
+            value: {{ .Values.feeds.subscription.default.mapSize }}
+          - name: APP_SUB_FEED_PATH
+            value: /tmp/sub_feed
+          - name: APP_SUB_FEED_MAX_RECV_SIZE
+            value: 128MB
+          - name: APP_SUB_FEED_MESSAGE_TIMEOUT
+            value: 1m
+          - name: APP_SUB_FEED_HOST
+            value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.subscription.default.service.port }}
+          - name: APP_SUB_FEED_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                key: username
+          - name: APP_SUB_FEED_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}-auth
+                key: password
+          {{- end }}
+
+          # auth feed
+          {{- if .Values.feeds.auth.default.enabled }}
+          - name: APP_AUTH_FEED_ENABLED
+            value: '1'
+          - name: APP_AUTH_FEED_MAP_SIZE
+            value: {{ .Values.feeds.auth.default.mapSize }}
+          - name: APP_AUTH_FEED_PATH
+            value: /tmp/auth_feed
+          - name: APP_AUTH_FEED_MAX_RECV_SIZE
+            value: 128MB
+          - name: APP_AUTH_FEED_MESSAGE_TIMEOUT
+            value: 1m
+          - name: APP_AUTH_FEED_HOST
+            value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "auth-feed" "default") "nameOverride" .Values.feeds.auth.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.auth.default.service.port }}
+          - name: APP_AUTH_FEED_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "auth-feed" "default") "nameOverride" .Values.feeds.auth.default.nameOverride) }}-auth
+                key: username
+          - name: APP_AUTH_FEED_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "auth-feed" "default") "nameOverride" .Values.feeds.auth.default.nameOverride) }}-auth
+                key: password
+          {{- end }}
+
+          # smm feed
+          {{- if .Values.feeds.smm.default.enabled }}
+          - name: APP_SMM_FEED_ENABLED
+            value: '1'
+          - name: APP_SMM_FEED_MAP_SIZE
+            value: {{ .Values.feeds.auth.default.mapSize }}
+          - name: APP_SMM_FEED_PATH
+            value: /tmp/smm_feed
+          - name: APP_SMM_FEED_MAX_RECV_SIZE
+            value: 128MB
+          - name: APP_SMM_FEED_MESSAGE_TIMEOUT
+            value: 1m
+          - name: APP_SMM_FEED_HOST
+            value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}.{{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}.svc:{{ .Values.feeds.smm.default.service.port }}
+          - name: APP_SMM_FEED_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}-smm
+                key: username
+          - name: APP_SMM_FEED_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}-smm
+                key: password
+          {{- end }}
 
           # i18n
           - name: APP_DEFAULT_LANG
@@ -310,6 +513,18 @@ spec:
           {{ include "clickhouseEnvs" . | indent 10 }}
           - name: APP_CLICKHOUSE_READ_TIMEOUT
             value: {{ .Values.api.clickhouse.readTimeout | quote }}
+          - name: APP_QUOTA_LOG_MAX_BATCH_DURATION
+            value: {{ .Values.api.dailyCleanup.quotaLogMaxBatchDuration | quote }}
+          - name: APP_QUOTA_LOG_MAX_BATCH_SIZE
+            value: {{ .Values.api.dailyCleanup.quotaLogMaxBatchSize | int | quote }}
+          - name: APP_USAGE_BATCH_SIZE
+            value: {{ .Values.api.appUsage.maxBatchSize | int | quote }}
+          - name: APP_USAGE_BATCH_WAIT
+            value: {{ .Values.api.appUsage.maxBatchWait | quote }}
+          - name: APP_USAGE_WRITE_TIMEOUT
+            value: {{ .Values.api.appUsage.writeTimeout | quote }}
+          - name: APP_USAGE_ACK_TIMEOUT
+            value: {{ .Values.api.appUsage.ackTimeout | quote }}
 
           {{- if and (or (not .Values.api.accounts.managed) (.Values.api.alerts.mailbot.enabled)) (not .Values.testFlags.api.noSendgrid) }}
           - name: SAFESURFER_SENDGRID_API_KEY
@@ -317,10 +532,6 @@ spec:
               secretKeyRef:
                 name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-sendgrid-secret
                 key: secret
-          - name: EMAIL_OUR_NAME
-            value: {{ .Values.api.sendgrid.senderName }}
-          - name: EMAIL_OUR_ADDRESS
-            value: {{ .Values.api.sendgrid.senderAddress }}
           {{- end }}
           - name: SAFESURFER_SENDGRID_COMMS_CONSENT_GROUP
             value: {{ .Values.api.sendgrid.commsConsentUnsubscribeGroup | quote }}
@@ -429,6 +640,8 @@ spec:
             value: {{ .Values.api.accounts.signonRateLimit.max | int | quote }}
           - name: APP_EMAIL_OTP_RATE_LIMIT_MAX
             value: {{ .Values.api.accounts.emailOtpRateLimit.max | int | quote }}
+          - name: APP_EMAIL_OTP_DAILY_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.emailOtpDailyRateLimit.max | int | quote }}
           - name: APP_TWO_FACTOR_RATE_LIMIT_MAX
             value: {{ .Values.api.accounts.twofactor.rateLimit | int | quote }}
           - name: APP_TWO_FACTOR_ATTEMPT_LIMIT
@@ -451,6 +664,15 @@ spec:
             value: '{{- range $key := .Values.api.accounts.data.editableKeys }}{{ $key }},{{- end }}'
           - name: APP_ACCOUNT_CREATIONS_PER_IP_PER_DAY
             value: {{ .Values.api.accounts.createAccountRateLimit.max | int | quote }}
+          - name: APP_ACCOUNT_LINK_INVITE_RATE_LIMIT_MAX
+            value: {{ .Values.api.accounts.accountLinkInviteRateLimit.max | int | quote }}
+          {{- if .Values.api.sessions.imageEncryptionKey }}
+          - name: APP_SESSIONS_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-session-encryption
+                key: key
+          {{- end }}
 
           #
           # Chargebee API details
@@ -550,6 +772,18 @@ spec:
           - name: APP_I_WANT_IPINFO_CONF_FILE
             value: /var/safesurfer/ipinfo/ipinfo.yaml
 
+          - name: APP_SESSION_NUDITY_DETECTION_CONF
+            value: /var/safesurfer/session-nuditydetection/nuditydetection.yaml
+
+          - name: APP_SESSION_TEXT_CLASSIFICATION_CONF
+            value: /var/safesurfer/session-textclassification/textclassification.yaml
+
+          - name: APP_SESSION_TEXT_CLASSIFICATION_CONF_2
+            value: /var/safesurfer/session-textclassification2/textclassification.yaml
+
+          - name: APP_SESSION_STORAGE_CONF
+            value: /var/safesurfer/session-storage/storage-{{ .Values.api.sessionStorageProvider }}.yaml
+
           - name: APP_NUDITY_DETECTION_PROVIDERS_CONF_FILE
             value: /var/safesurfer/nuditydetection/nuditydetection.yaml
 
@@ -562,26 +796,45 @@ spec:
 
           - name: APP_CLEAN_SHUTDOWN_WEBSOCKET_RPM
             value: {{ .Values.api.websocketShutdownRpm | int | quote }}
-          
+
+          - name: APP_TEXT_CLASSIFICATION_PADDING_SIZE
+            value: {{ .Values.api.sessions.textClassificationPaddingSize | int | quote }}
+
+          - name: APP_TEXT_CLASSIFICATION_SUBMIT_JOBS_MAX
+            value: {{ .Values.api.sessions.textClassificationSubmitJobsMax | int | quote }}
+
+
+          {{- if .Values.api.extraEnv }}
+          {{- toYaml .Values.api.extraEnv | nindent 10 }}
+          {{- end }}
         ports:
           - containerPort: {{ .Values.api.port }}
         readinessProbe:
           httpGet:
             path: /health
             port: 8082
-          initialDelaySeconds: 1
-          periodSeconds: 10
+          initialDelaySeconds: 10
+          periodSeconds: 60
+          timeoutSeconds: 60
         livenessProbe:
           httpGet:
             path: /health
             port: 8082
-          initialDelaySeconds: 1
+          initialDelaySeconds: 10
+          periodSeconds: 60
+          timeoutSeconds: 60
+        startupProbe:
+          tcpSocket:
+            port: {{ .Values.api.port }}
+          failureThreshold: 30_000
           periodSeconds: 10
         resources:
           {{- toYaml .Values.api.resources | nindent 10 }}
         # Mount the service account token as a file, plus resources
         # and other config.
         volumeMounts:
+          - name: tmp-volume
+            mountPath: /tmp
           - name: routes-config
             mountPath: /var/safesurfer/config/routes-config.yaml
             subPath: routes-config.yaml
@@ -600,6 +853,22 @@ spec:
         {{- if .Values.api.nudityDetectionProvider }}
           - name: nuditydetection
             mountPath: /var/safesurfer/nuditydetection
+        {{- end }}
+        {{- if .Values.api.sessionNudityDetectionProvider }}
+          - name: session-nuditydetection
+            mountPath: /var/safesurfer/session-nuditydetection
+        {{- end }}
+        {{- if .Values.api.sessionTextClassificationProvider }}
+          - name: session-textclassification
+            mountPath: /var/safesurfer/session-textclassification
+        {{- end }}
+        {{- if .Values.api.sessionTextClassificationProvider2 }}
+          - name: session-textclassification-2
+            mountPath: /var/safesurfer/session-textclassification2
+        {{- end }}
+        {{- if .Values.api.sessionStorageProvider }}
+          - name: session-storage
+            mountPath: /var/safesurfer/session-storage
         {{- end }}
 ---
 #
@@ -730,17 +999,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  {{- with .Values.api.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
-    {{ if .Values.api.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Values.api.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingress.whitelistSourceRange | quote }}
-    {{- end }}
-    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
-    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:
@@ -768,7 +1030,7 @@ spec:
 #
 # Cert and issuer
 #
-{{ include "cert" (dict "cert" .Values.api.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.api.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingress.host) "Values" .Values "ingressClass" .Values.api.ingress.class) }}
 {{- end }}
 ---
 {{ if .Values.api.ingressIpv6.enabled }}
@@ -780,17 +1042,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  {{- with .Values.api.ingressIpv6.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
-    {{ if .Values.api.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Values.api.ingressIpv6.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.ingressIpv6.whitelistSourceRange | quote }}
-    {{- end }}
-    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
-    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.api.ingressIpv6.class }}
   tls:
@@ -818,7 +1073,7 @@ spec:
 #
 # Cert and issuer
 #
-{{ include "cert" (dict "cert" .Values.api.ingressIpv6.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingressIpv6.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.api.ingressIpv6.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride)) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.ingressIpv6.host) "Values" .Values "ingressClass" .Values.api.ingressIpv6.class) }}
 {{- end }}
 ---
 {{ if .Values.api.adminIngress.enabled }}
@@ -830,14 +1085,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-admin
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  {{- with .Values.api.adminIngress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
-    {{- if .Values.api.adminIngress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.adminIngress.whitelistSourceRange | quote }}
-    {{- end }}
-    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
-    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:
@@ -865,7 +1116,7 @@ spec:
 #
 # Cert and issuer
 #
-{{ include "cert" (dict "cert" .Values.api.adminIngress.tls "Release" .Release "name" (printf "%s-admin" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) )) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.adminIngress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.api.adminIngress.tls "Release" .Release "name" (printf "%s-admin" (include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) )) "namespace" .Values.api.namespace "dnsNames" (list .Values.api.adminIngress.host) "Values" .Values "ingressClass" .Values.api.ingress.class) }}
 {{- end }}
 #
 # Another ingress with custom TLS, if enabled
@@ -887,17 +1138,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-extra-ingress
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+  {{- with .Values.api.extraIngress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
-    {{ if .Values.api.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.api.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Values.api.extraIngress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.api.extraIngress.whitelistSourceRange | quote }}
-    {{- end }}
-    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
-    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.api.ingress.class }}
   tls:

@@ -144,8 +144,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "protocol-checker" "nameOverride" .Values.protocolchecker.nameOverride) }}-ingress
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" "protocol-checker") }}
+  {{- with .Values.protocolchecker.ingressAnnotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.protocolchecker.ingressClass }}
   tls:

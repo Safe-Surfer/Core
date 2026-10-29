@@ -1,5 +1,98 @@
 # Changelog
 
+## 12.0.0 — 20 October 2026
+
+This release covers everything since 11.0.0 (March 2025). It is a major version: several values moved or stopped being read.
+
+### Breaking changes
+
+- On Kubernetes, DNS-over-HTTPS and DNS-over-TLS no longer have their own Deployments or Services. `dns.doh.deployment`, `dns.doh.sidecar`, `dns.doh.replicas`, `dns.doh.deploymentStrategy`, `dns.doh.horizonalPodAutoscaler`, `dns.doh.affinity`, `dns.doh.podDisruptionBudget`, `dns.doh.service`, and `dns.doh.ipv6Service` are not read. The same fields under `dns.dot` are not read. With `dns.doh.enabled` or `dns.dot.enabled`, those containers run in the `dns.dns` pod and are published on `dns.dns.service.tcp` and `dns.dns.ipv6Service.tcp`: DoH on TCP 443, DoT on TCP 853. `dns.dns.service.tcp` and `dns.dns.service.udp` are still two Services. `dns.dns.hostNetwork` still binds the container ports on the node.
+- `ss-config` still installs DoH and DoT as their own host services, `ss-doh.service` and `ss-dot.service`, when `dns.doh.enabled` or `dns.dot.enabled` is set. DoQ is `ss-doq.service` on the same path.
+- Plain DNS is answered by a `dns-proxy` container (`dns.dns.plaindns`). The PowerDNS Recursor listens on `dns.dns.recursorPort` and only receives queries from the proxies in the same pod. `dns.dns.blockFirefoxDOH` has been removed. In 11.0.0 it defaulted to on, so Firefox's own DoH endpoint is no longer blocked by that switch.
+- The DNS feed Deployment moved from `dns.lmdbFeed` to `feeds.dns`. No template reads `dns.lmdbFeed`. `feeds.dns` adds `lmdb`, `streamDomains`, `initLimit`, and `listenerTimeout`.
+- `dns.newDomainNotifier` has been removed.
+- In-cluster auto-categorization has been removed. `categorizer.autoCat`, `categorizer.adminApp.crawlerStorage`, and `categorizer.adminApp.newDomainNotifierUser` are gone, along with the classifier, crawler worker, and new-domain queue pods. The auto-categorization guide has been removed. The admin app exposes classifier-outpost APIs for an external classifier. That process is not deployed by this chart.
+- The API checks these quota names. Helm merges `api.quotas`, so an old key left in your values is still passed through as its own quota. The API does not read it. Daily and weekly reset applies to names containing `per_day` or `per_week`.
+  - `alerts_dismissed` is now `alerts_dismissed_per_day`
+  - `cast_events` is now `cast_events_per_day`
+  - `evasion_attempts` is now `evasion_attempts_per_day`
+  - `location_history` is now `location_history_per_day`
+  - `logged_notifications` is now `logged_notifications_per_day`
+  - `nudity_detections` is now `nudity_detections_per_week`
+  - `screencasts` is now `screencasts_per_day`
+  - `vpn_attempts` is now `vpn_attempts_per_day`
+- `api.rateLimiting` has been removed, and so has `monitoring.ingress.rateLimiting`. `categorizer.adminApp.rateLimiting.publicGetDomain` is unchanged.
+- `whitelistSourceRange` is no longer read on the API, frontend, monitoring, admin app, health check, ClickHouse daemon, ipsetd, or feed ingresses. Allow source addresses with a Traefik `ipAllowList` middleware and `traefik.ingress.kubernetes.io/router.middlewares`. Feed LoadBalancer source ranges stay on `loadBalancerSourceRanges`.
+- `api.sendgrid.senderAddress` and `api.sendgrid.senderName` are no longer injected into the API or mailbot. The sender is read from the `email-sender-name` and `email-sender-address` meta tags in the rendered email. Email theming stays under `api.emails.theme`.
+- `api.dailyCleanup.timeouts` has been removed. Use `api.dailyCleanup.maxConcurrency`, `quotaLogMaxBatchDuration`, and `quotaLogMaxBatchSize`.
+- The daily cleanup job no longer syncs Chargebee subscriptions.
+- The DNS image build installs PowerDNS Recursor 5.4.5 or newer. 11.0.0 allowed 5.3.5 or newer. 5.4.5 includes the fixes in [PowerDNS Security Advisory 2026-08](https://doc.powerdns.com/recursor/security-advisories/powerdns-advisory-2026-08.html) and [2026-10](https://doc.powerdns.com/recursor/security-advisories/powerdns-advisory-2026-10.html).
+
+### Migration guide
+
+- For a Kubernetes install that set `dns.doh.deployment` or `dns.dot.deployment`, move replica, autoscaling, affinity, disruption-budget, and Service settings onto `dns.dns`. Delete `dns.doh.sidecar`, `dns.dot.sidecar`, and the removed fields listed above. DoH and DoT then use the DNS pod and its TCP Service. An `ss-config` install keeps `ss-doh.service` and `ss-dot.service`. Nothing moves there.
+- Copy `dns.lmdbFeed` to `feeds.dns` and delete `dns.lmdbFeed`. Set `lmdb`, `streamDomains`, `initLimit`, and `listenerTimeout` if you do not want the chart defaults.
+- If you deployed `dns.newDomainNotifier` or `categorizer.autoCat`, remove those values. Those pods will not come back on upgrade.
+- Rename overridden quota keys to the names above. Leave the old key out, or it remains in the API config under the old name and is not enforced.
+- Move any `whitelistSourceRange` value onto a Traefik `ipAllowList` middleware, and reference it from the ingress `annotations`. Move `api.rateLimiting` and `monitoring.ingress.rateLimiting` to a Traefik rate-limit middleware if you still want that limit.
+- Move the SendGrid sender out of `api.sendgrid` and into the email HTML meta tags. Delete `api.dailyCleanup.timeouts` if you set it.
+- Review `api.strings` for account-link invitation copy and the newer Apple profile strings before you upgrade a deployment that sends those emails or profiles.
+- Run `helm repo update safesurfer` after this version is published, then upgrade.
+
+### Non-breaking changes
+
+#### DNS
+
+- DNS-over-QUIC. Set `dns.doq.enabled`. On Kubernetes it is a `dns-proxy` container in the DNS pod, published as UDP 853 on `dns.dns.service.udp`. DoT stays on TCP 853. `protocolchecker.domains.doq` is the protocol-check name. 0-RTT is disabled. The default image is `dns-proxy:2.0.0`. `ss-config` runs it as `ss-doq.service`.
+- `dns.doh.corsAllowedOrigins` sets CORS for `/dns-query` and `/server-info`. The default is `*`.
+- `dns.clusterId` is returned by the DoH `/server-info` endpoint. An empty value becomes the Helm release name.
+- `dns.dns.recursorPort` and `dns.dns.recursorExtraConfig` configure the recursor behind the filtering proxies.
+- The DNS stack images referenced by the chart were rebuilt for amd64 and arm64.
+- The DNS pod's Postgres LMDB init container and manager now receive `APP_LISTENER_TIMEOUT`, `APP_STREAM_DOMAINS`, and the full-rebuild intervals. Those come from `dns.dns.sidecarContainers.lmdbManager.backend.postgres` (`listenerTimeout` defaults to `30m`, `streamDomains` to `true`). Without them, `dns-feed` exits on startup. The standalone feed Deployments already set the same variables. `ss-config` 3.0.0 sets the same two variables on `ss-init-lmdb` and `ss-dns-feed`, and pins `dns-feed:1.0.1`. Shell scripts it writes are mode `0755`, and the cloud-init permissions field is `0755`.
+- `dns.dns.deploymentStrategy.type: Recreate` no longer also renders `rollingUpdate`. Helm keeps the default `rollingUpdate` keys when you only override `type`, and Kubernetes rejects that combination. A one-node host-network DNS pod needs `Recreate`: the default rolling update tries to start a second pod on the same ports.
+- An HTTP01 Issuer with no `ingress.class` is rendered as an empty `ingress: {}` object. cert-manager 1.17 rejects the previous empty value.
+- The API receives `APP_TEXT_CLASSIFICATION_SUBMIT_JOBS_MAX` from `api.sessions.textClassificationSubmitJobsMax` (default `10`). Without it, `api:12.0.1` panics at startup even when text classification is not configured.
+- Feed images are `dns-feed:1.0.1`, `auth-feed:1.0.1`, `subscription-feed:1.0.1`, and `smm-feed:1.0.1`. `1.0.1` treats `MAX(ID)` on an empty `wp_users` table as zero, so account segmentation can stay on for a new install. `1.0.0` exited during LMDB init in that case. The admin app image is `5.25.1`.
+
+#### Frontend
+
+- The reference dashboard image is `registry.gitlab.com/safesurfer/dashboard:3.0.0` (Vue 3). 11.0.0 used `dashboard:2.0.2`. Branding and deployment hosts are tokens and meta tags in that repo. Publish the `3.0.0` tag on `gitlab.com/safesurfer/dashboard` before installing the chart.
+
+#### Feeds
+
+- `feeds.dns` is the DNS feed Deployment that used to be `dns.lmdbFeed`.
+- `feeds.blocking` distributes the blocking model.
+- `feeds.subscription` distributes subscription and quota state.
+- `feeds.auth` distributes the data needed to validate auth tokens. The tokens themselves are not in the feed.
+- `feeds.smm` distributes text-classification job state.
+- Each feed can be exposed with a ClusterIP, a LoadBalancer, or an Ingress. gRPC ingress depends on the controller. See the comments on `feeds` in `values.yaml`.
+
+#### API
+
+- Account linking. One account can invite another, up to `api.quotas.linked_accounts` (default 5). Invitation email is limited by `api.accounts.accountLinkInviteRateLimit` (default 10 per account per day). Looking up whether an address already has an account also counts against `createAccountRateLimit`.
+- Sessions API, configured under `api.sessions`. This is the successor to screencasts and the notification log. Those older APIs are still served. Session quotas default to 0, which leaves the feature off. Stored images can be encrypted with `api.sessions.imageEncryptionKey` (32-byte AES-256 key, hex).
+- Built-in text classification under `api.textClassification`. Point a text-classification provider at platform `internal`. Requires Redis. The worker and the llama.cpp server run as two containers in one pod. `guidedJSON` constrains the model output. New quotas: `text_classifications_per_week` and `text_classifications_per_week_2`.
+- App usage uploads are acknowledged only after the batch commits to ClickHouse. Tune this with `api.appUsage`.
+- Custom domain rules accept an include-subdomains flag on hostnames, shell-style globs, and regular expressions prefixed with `#re`. `dns-proxy:2.0.0` evaluates those patterns. `dns-feed:1.0.0` writes the pattern index.
+- A new router client whose reported name matches an existing client is merged into that client. This is what covers a device that rotates its MAC address and keeps its DHCP name. New-device alerts are skipped for a merged client, and for a client that already belongs to a group.
+- Alert queries can return the devices they apply to. No-activity alerts group adjacent quiet periods, including across devices, and record whether the quiet source was DNS or the browser extension.
+- Sign-in reports `emailOtpRequired` when an email code is required even though the account has a password. `api.accounts.emailOtpDailyRateLimit` caps OTP email (default 10 per account per day).
+- A category can be marked always-allowed in its metadata.
+- Apple configuration profiles can target macOS, force the system proxy in managed browsers, and include Brave Origin.
+- `api.rolesConfig` adds `macos` and `crx` (browser extension) roles.
+- Renewal estimates are skipped for App Store and Play Store subscriptions. Chargebee returns `resource_not_found` for those subscription IDs, and that error used to fail the whole subscription lookup.
+- Google Play API calls no longer derive their HTTP timeout from a context that has no deadline. A missing deadline used to produce a zero timeout and fail the call, including cancellation. The client now uses a 30 second timeout and refreshes the cached token 30 seconds before it expires.
+
+#### Monitoring
+
+- `monitoring.crewmateMetrics` collects crewmate job metrics for the built-in Grafana dashboards.
+
+#### Admin app
+
+- Classifier-outpost endpoints for unknown sites, uncategorized lists, and category suggestions. The outpost process itself is a separate image and is not deployed by this chart.
+- Reserved TLDs such as `.arpa` can be allowed when adding a domain.
+- List analytics can be filtered to uncategorized domains.
+
 ## 11.0.0
 
 ### Breaking changes

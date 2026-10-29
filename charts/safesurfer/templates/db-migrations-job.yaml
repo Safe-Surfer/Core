@@ -38,6 +38,10 @@ spec:
       containers:
       - name: {{ include "name" (dict "Release" .Release "name" "db" "nameOverride" .Values.db.nameOverride) }}-migrations
         image: {{ required "Schema version required" .Values.db.schemaVersion }}
+        # IfNotPresent so kind-loaded e2e tags are used. Versioned prod tags
+        # already default to this; :latest would Always-pull and ImagePullBackoff
+        # in clusters that only have the image via `kind load`.
+        imagePullPolicy: IfNotPresent
         env:
         {{ include "dbEnvs" . | indent 8 }}
 {{- end }}

@@ -1,0 +1,104 @@
+{{- if .Values.api.textClassification.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  replicas: {{ .Values.api.textClassification.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+  template:
+    metadata:
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+    spec:
+      shareProcessNamespace: true
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "api" "nameOverride" .Values.api.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      {{- with .Values.api.textClassification.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.textClassification.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+        image: {{ .Values.api.textClassification.image }}
+        env:
+        {{ include "redisEnvs" . | indent 8 }}
+        - name: APP_MIN_CPU
+          value: {{ .Values.api.textClassification.resources.requests.cpu | quote }}
+        - name: APP_MAX_CONCURRENT_JOBS
+          value: {{ .Values.api.textClassification.maxConcurrentJobs | int | quote }}
+        # Constrains llama-server decoding to {O,M,S,V,D} integers 0–9 via
+        # OpenAI response_format json_schema (same path as the GPU/vLLM tier).
+        - name: APP_BUILTIN_GUIDED_JSON
+          value: {{ .Values.api.textClassification.guidedJSON | toString | quote }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 101
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+        ports:
+          - containerPort: 8081
+      - name: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}-llama-server
+        image: {{ .Values.api.textClassification.modelImage }}
+        env:
+        - name: LLAMA_ARG_THREADS
+          value: {{ .Values.api.textClassification.numThreads | int | quote }}
+        - name: LLAMA_ARG_PARALLEL
+          value: {{ .Values.api.textClassification.maxConcurrentJobs | int | quote }}
+        - name: LLAMA_ARG_CACHE_RAM
+          value: {{ .Values.api.textClassification.cacheRamMiB | int | quote }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 101
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 18
+        resources:
+          {{- toYaml .Values.api.textClassification.resources | nindent 10 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+#
+# Create the HPA if desired.
+#
+{{- if .Values.api.textClassification.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+  namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.api.namespace) }}
+spec:
+  maxReplicas: {{ .Values.api.textClassification.hpa.maxReplicas }}
+  minReplicas: {{ .Values.api.textClassification.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" (dict "Release" .Release "name" "textclassification-builtin" "nameOverride" .Values.api.textClassification.nameOverride) }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.api.textClassification.hpa.targetAverageCPUUtilization }}
+{{- end }}
+{{- end }}

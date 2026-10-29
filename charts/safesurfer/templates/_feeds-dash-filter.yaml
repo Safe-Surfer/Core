@@ -1,0 +1,48 @@
+{{- define "feedsDashFilter" }}
+current:
+  selected: false
+  text: ''
+  value: ''
+hide: 0
+includeAll: false
+label: 'Feed'
+multi: false
+name: app
+query: ''
+skipUrlSync: false
+type: 'custom'
+options:
+  {{- if .Values.feeds.auth.default.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "auth-feed" "default") "nameOverride" .Values.feeds.auth.default.nameOverride) }}
+    value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "auth-feed" "default") "nameOverride" .Values.feeds.auth.default.nameOverride) }}
+  {{- end }}
+  {{- if .Values.feeds.smm.default.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+    value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "smm-feed" "default") "nameOverride" .Values.feeds.smm.default.nameOverride) }}
+  {{- end }}
+  {{- if .Values.feeds.blocking.default.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+    value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "blocking-feed" "default") "nameOverride" .Values.feeds.blocking.default.nameOverride) }}
+  {{- end }}
+  {{- if .Values.feeds.subscription.default.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}
+    value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "subscription-feed" "default") "nameOverride" .Values.feeds.subscription.default.nameOverride) }}
+  {{- end }}
+  {{- if .Values.feeds.dns.default.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" "default") "nameOverride" .Values.feeds.dns.default.nameOverride) }}
+    value: {{ include "name" (dict "Release" .Release "name" (printf "%s-%s" "dns-feed" "default") "nameOverride" .Values.feeds.dns.default.nameOverride) }}
+  {{- end }}
+  {{- $release := .Release }}
+  {{- range $spec := .Values.feeds.dns.extraInstances }}
+  {{- if $spec.enabled }}
+  - selected: false
+    text: {{ include "name" (dict "Release" $release "name" (printf "%s-%s" "dns-feed" $spec.name) "nameOverride" $spec.nameOverride) }}
+    value: {{ include "name" (dict "Release" $release "name" (printf "%s-%s" "dns-feed" $spec.name) "nameOverride" $spec.nameOverride) }}
+  {{- end }}
+  {{- end }}
+{{- end }}

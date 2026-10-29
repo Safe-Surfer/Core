@@ -1,3 +1,0 @@
-{{- if .Values.dns.enabled }}
-{{ include "lmdbFeedSpec" (dict "Name" "default" "Spec" .Values.dns.lmdbFeed.default "Release" .Release "Values" .Values "Chart" .Chart) }}
-{{- end }}

@@ -147,15 +147,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride) }}
   namespace: {{ include "ns" (dict "Values" .Values "Release" .Release "IndividualNamespace" .Values.healthChecks.namespace) }}
+  {{- with .Values.healthChecks.http.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
-    {{ if .Values.healthChecks.http.ingress.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.healthChecks.http.ingress.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Values.healthChecks.http.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.healthChecks.http.ingress.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.healthChecks.http.ingress.class }}
   tls:
@@ -183,7 +178,7 @@ spec:
 #
 # Cert and issuer
 #
-{{ include "cert" (dict "cert" .Values.healthChecks.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride)) "namespace" .Values.healthChecks.namespace "dnsNames" (list .Values.healthChecks.http.ingress.host) "Values" .Values) }}
+{{ include "cert" (dict "cert" .Values.healthChecks.http.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "health-checks" "nameOverride" .Values.healthChecks.nameOverride)) "namespace" .Values.healthChecks.namespace "dnsNames" (list .Values.healthChecks.http.ingress.host) "Values" .Values "ingressClass" .Values.healthChecks.http.ingress.class) }}
 {{- end }}
 {{- end }}
 {{- end }}

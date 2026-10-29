@@ -33,7 +33,11 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          {{- if .ingressClass }}
+          class: {{ .ingressClass }}
+          {{- else }}
+          {}
+          {{- end }}
       selector:
         dnsNames:
         {{- toYaml .dnsNames | nindent 8 }}

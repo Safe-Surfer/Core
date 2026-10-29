@@ -6,9 +6,8 @@
 - Integration with [Chargebee](https://chargebee.com) or any other billing provider.
 - Syncing from Safe Surfer's central domain database.
 - User management.
-- DNS-over-HTTPS, DNS-over-TLS, and DNScrypt.
+- DNS-over-HTTPS, DNS-over-TLS, DNS-over-QUIC, and DNScrypt.
 - Integration with [Alphasoc](https://alphasoc.com) for enterprise-grade DNS security analytics & alerts.
-- Auto-categorization of newly discovered website domains (including CSAM detection).
 - Built-in Grafana monitoring.
 
 ## Why?
@@ -25,9 +24,8 @@ Here's everything you can achieve using Safe Surfer Core:
 - [Per User and Device Filtering](./guides/per-user-and-device-filtering.md)
 - [Checking Protection](./guides/checking-protection.md)
 - [Billing and Quotas](./guides/billing-and-quotas.md)
-- [DOH and DOT](./guides/doh-and-dot.md)
+- [DOH, DOT, and DOQ](./guides/doh-and-dot.md)
 - [Monitoring & Alerting](./guides/monitoring-and-alerting.md)
-- [Auto Categorization](./guides/auto-categorization.md)
 - [AlphaSOC Integration](./guides/alphasoc.md)
 - [Building a Dashboard](./guides/building-a-dashboard.md)
 - [Custom Router Integration](./guides/custom-router-integration.md)

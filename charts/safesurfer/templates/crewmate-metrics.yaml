@@ -1,0 +1,84 @@
+{{- if .Values.monitoring.enabled }}
+{{- if .Values.monitoring.crewmateMetrics.enabled }}
+---
+#
+# Image pull secret.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}-gitlab-registry
+  namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "imagePullSecret" .Values.imagePullSecret }}
+---
+#
+# The deployment.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+  namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "2112"
+        prometheus.io/scrape: "true"
+        {{- if and .Values.redis.enabled .Values.redis.external.enabled }}
+        checksum/redis-url: {{ .Values.redis.external.url | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+      - name: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}-gitlab-registry
+      automountServiceAccountToken: false
+      containers:
+      - name: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+        image: {{ .Values.monitoring.crewmateMetrics.image }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+        {{ include "loggingEnvs" (dict "level" .Values.monitoring.crewmateMetrics.logLevel) | indent 8 }}
+        {{ include "redisEnvs" (dict "Values" .Values "Release" .Release "required" true) | indent 8 }}
+        {{- if .Values.monitoring.crewmateMetrics.refreshInterval }}
+        - name: APP_REFRESH_INTERVAL
+          value: {{ .Values.monitoring.crewmateMetrics.refreshInterval | quote }}
+        {{- end }}
+        ports:
+        - containerPort: 2112
+        resources:
+          {{- toYaml .Values.monitoring.crewmateMetrics.resources | nindent 10 }}
+---
+#
+# The service.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+  namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    prometheus.io/port: "2112"
+spec:
+  ports:
+  - port: 2112
+    targetPort: 2112
+  selector:
+    app: {{ include "name" (dict "Release" .Release "name" "crewmate-metrics" "nameOverride" .Values.monitoring.crewmateMetrics.nameOverride) }}
+{{- end }}
+{{- end }}

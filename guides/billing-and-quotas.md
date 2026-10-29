@@ -21,7 +21,7 @@ api:
       webhookPassword: generate-a-strong-password
 ```
 
-Make sure to upgrade the helm chart. Then, [create a webhook](https://www.chargebee.com/docs/2.0/webhook_settings.html) on Chargebee. The `Webhook URL` should be `https://api.ss.example.com/v2/webhooks/user-subscription`, changing `api.ss.example.com` to your own API domain. You should `Protect webhook URL with basic authentication`, then use the `webhookPassword` from your values as the password. Select `Version 2`, set as primary, then select all subscription-related events to be sent. Once done, it should look something like this:
+Make sure to upgrade the helm chart. New Chargebee sites use Product Catalog 2.0, and the chart default `api.accounts.chargebee.productCatalog2` is `true`, which matches that. Then, [create a webhook](https://www.chargebee.com/docs/2.0/webhook_settings.html) on Chargebee. The `Webhook URL` should be `https://api.ss.example.com/v2/webhooks/user-subscription`, changing `api.ss.example.com` to your own API domain. Turn on `Protect webhook URL with basic authentication`, leave the username blank, and use the `webhookPassword` from your values as the password. The API checks that password and ignores the username. Select `Version 2`, set as primary, then select all subscription-related events to be sent. Once done, it should look something like this:
 
 ![](./img/chargebee-1.png)
 
@@ -171,17 +171,32 @@ $ curl "$SS_API_ADDR/v2/user/subscription/estimate" -d '{"planID": "Safe-Surfer-
     },
     "unbilledCharges": null,
     "quotas": {
-      "alert_emails": {
-        "maxValue": 10,
-        "currentValue": 2,
+      "alert_email_send": {
+        "maxValue": 1,
+        "currentValue": 0,
         "imposedBy": "plan"
       },
-      "alerts_dismissed": {
-        "maxValue": 5000,
+      "alert_emails": {
+        "maxValue": 10,
         "currentValue": 0,
         "imposedBy": "default"
       },
-      "cast_events": {
+      "alerts_dismissed_per_day": {
+        "maxValue": 1000,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "app_rules_per_device": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "apps_per_device": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "cast_events_per_day": {
         "maxValue": 0,
         "currentValue": 0,
         "imposedBy": "default"
@@ -201,12 +216,37 @@ $ curl "$SS_API_ADDR/v2/user/subscription/estimate" -d '{"planID": "Safe-Surfer-
         "currentValue": 0,
         "imposedBy": "plan"
       },
-      "evasion_attempts": {
+      "evasion_attempts_per_day": {
+        "maxValue": 100,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "groups": {
+        "maxValue": 200,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "ios_removal_passwords": {
         "maxValue": 1000,
         "currentValue": 0,
         "imposedBy": "default"
       },
-      "logged_notifications": {
+      "linked_accounts": {
+        "maxValue": 5,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "location_history_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "logged_notifications_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "nudity_detections_per_week": {
         "maxValue": 0,
         "currentValue": 0,
         "imposedBy": "default"
@@ -216,23 +256,23 @@ $ curl "$SS_API_ADDR/v2/user/subscription/estimate" -d '{"planID": "Safe-Surfer-
         "currentValue": 0,
         "imposedBy": "default"
       },
-      "screencasts": {
+      "screencasts_per_day": {
         "maxValue": 0,
         "currentValue": 0,
         "imposedBy": "default"
       },
       "screentime_deadlines_per_device": {
-        "maxValue": 10,
+        "maxValue": 20,
         "currentValue": 0,
         "imposedBy": "default"
       },
       "screentime_timers_per_device": {
-        "maxValue": 10,
+        "maxValue": 20,
         "currentValue": 0,
         "imposedBy": "default"
       },
       "screentime_timetables_per_device": {
-        "maxValue": 10,
+        "maxValue": 20,
         "currentValue": 0,
         "imposedBy": "default"
       },
@@ -246,12 +286,47 @@ $ curl "$SS_API_ADDR/v2/user/subscription/estimate" -d '{"planID": "Safe-Surfer-
         "currentValue": 0,
         "imposedBy": "default"
       },
-      "vpn_attempts": {
-        "maxValue": 20000,
+      "session_events_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "session_notification_events_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "session_screen_events_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "sessions_per_day": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "text_classifications_per_week": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "text_classifications_per_week_2": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "vpn_attempts_per_day": {
+        "maxValue": 100,
         "currentValue": 0,
         "imposedBy": "default"
       },
       "web_push_subscriptions": {
+        "maxValue": 0,
+        "currentValue": 0,
+        "imposedBy": "default"
+      },
+      "ws_sync": {
         "maxValue": 0,
         "currentValue": 0,
         "imposedBy": "default"
@@ -504,7 +579,7 @@ Log in as the existing user:
 
 ![](./img/dashboard-35.png)
 
-Hit the trial button in the top right to get to the subscription menu. Then, hit "Change Plan".
+The subscription status tag in the top right opens Account settings on the Subscription section (`/account-settings?section=payment`). You can also open Account settings from the account menu and choose Subscription. On a Chargebee trial the buttons are **Add payment method**, **Cancel**, and **Change plan**. The invoice heading is **Next bill**.
 
 ![](./img/dashboard-36.png)
 
@@ -586,9 +661,9 @@ Now you can search for the user again on the admin app, and you should see the n
 ![](./img/users-3.png)
 
 > **Note**
-> Webhooks are asynchronous and usually complete instantly, but there is no guarantee on speed provided by Chargebee. You may have to wait a couple of minutes. To ensure the subscription is added instantly, use the API method below.
+> Webhooks are asynchronous and usually complete instantly, but there is no guarantee on speed provided by Chargebee. You may have to wait a couple of minutes. To ensure the subscription is added instantly, use the API method above.
 
-You can also view the new subscription on the user dashboard. Sign in as your new user and navigate to `Account Settings -> Subscription` to view it. It should look something like this:
+You can also view the new subscription on the user dashboard. Sign in as your new user and open Account settings, then Subscription. It should look something like this:
 
 ![](./img/dashboard-24.png)
 ![](./img/dashboard-25.png)
@@ -604,10 +679,12 @@ You can manually grant a user an active subscription by using the "Courtesy Acco
 
 ![](./img/users-9.png)
 
-Now you can use `api.accounts.anyPlanConfig` or `api.accounts.courtesyPlanConfig` to configure quotas for any users with an active subscription, or courtesy subscription specifically.
+Now you can use `api.accounts.anyPlanConfig` or `api.accounts.courtesyPlanConfig` to configure quotas for any users with an active subscription, or courtesy subscription specifically. On the dashboard, Account settings → Subscription tells a courtesy account that it is in courtesy mode and that features are enabled. The Chargebee invoice and add-on editor in the sections above appear once the account has a Chargebee subscription.
+
+A courtesy account on the default chart already has `alert_email_send` imposed by `plan`, because `anyPlanConfig` adds `1` to the default of `0`.
 
 ### Editing Quotas
-Search for any user in the admin app, select the dropdown, then select "View/Edit Quotas". As an example, if you followed the guide above, a user with the relevant plan and addon would look something like this:
+Search for any user in the admin app, open the actions menu, then select "View/Edit Quotas". `imposedBy` is `default` for `api.quotas`, `plan` when an active plan or `anyPlanConfig` set it, and `grant` after you set it here. A courtesy user on the default chart looks like this. A user on the plan from the example above would show `devices` and `client_devices` as `plan`, and `security_alert_endpoints_per_hour` equal to the addon quantity.
 
 ![](./img/users-6.png)
 

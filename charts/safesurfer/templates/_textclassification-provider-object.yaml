@@ -1,0 +1,51 @@
+{{- define "textClassificationProviderObject" }}
+{{- with index .Values.providers.textclassification .key }}
+{{- if eq .platform "internal" }}
+{{- /*
+  Internal text classification provider: render a crewmate Coordinator config.
+  If the provider's `coordinator:` field is set in values, it fully replaces the
+  auto-generated default below — use that to add tiers (e.g. an ARM pool ahead
+  of the existing one). The default is a single-tier coordinator that delegates
+  to the existing text-classification-worker pool, behaviour-equivalent to the
+  pre-Coordinator setup.
+*/ -}}
+{{- if .coordinator }}
+coordinator:
+{{- toYaml .coordinator | nindent 2 }}
+{{- else }}
+coordinator:
+  name: api_text_classifications
+  hookTimeout: {{ $.Values.api.textClassification.saveTimeout }}
+  tiers:
+    - jobType: api_text_classifications
+      pickupTimeout: 24h
+      executionTimeout: {{ $.Values.api.textClassification.maxDuration }}
+      keepResultFor: {{ $.Values.api.textClassification.keepResultFor }}
+      maxQueued: {{ $.Values.api.textClassification.maxQueued | int }}
+      retryBackoffs:
+        - 1m
+        - 5m
+        - 10m
+{{- end }}
+{{- else }}
+{{- if eq .platform "llamaServer" }}
+builtIn:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "googleCloudNlpModeration" }}
+googleCloudNlpModeration:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "azureAiContentSafety" }}
+azureAiContentSafety:
+{{- .secret | nindent 2 }}
+{{- else if eq .platform "blended" }}
+blended:
+{{- .secret | nindent 2 }}
+{{- else }}
+{{- fail "that text classification platform is not supported" }}
+{{- end }}
+classMap:
+{{- toYaml .classMap | nindent 2 }}
+resDir: textclass-static-res
+{{- end }}
+{{- end }}
+{{- end }}

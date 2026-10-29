@@ -30,6 +30,12 @@ spec:
       targetPort: {{ .Values.dns.dns.bindPort }}
       protocol: UDP
       name: udp
+    {{- if .Values.dns.doq.enabled }}
+    - port: 853
+      targetPort: {{ .Values.dns.doq.bindPort }}
+      protocol: UDP
+      name: doq
+    {{- end }}
   selector:
     {{- include "safesurfer-dns.selectorLabels" . | nindent 4 }}
     app: {{ include "dnsContainerAndAppName" . }}

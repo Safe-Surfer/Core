@@ -9,14 +9,10 @@ kind: Ingress
 metadata:
   name: {{ include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride) }}
   namespace: {{ if .Values.monitoring.namespace }}{{ .Values.monitoring.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+  {{- with .Values.monitoring.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    {{ if .Values.monitoring.ingress.rateLimiting.enabled }}
-    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.monitoring.ingress.rateLimiting.rpm | quote }}
-    {{ end }}
-    {{- if .Values.monitoring.ingress.whitelistSourceRange }}
-    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.monitoring.ingress.whitelistSourceRange | quote }}
-    {{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.monitoring.ingress.class }}
   tls:
@@ -50,6 +46,6 @@ spec:
   # test
 {{- end }}
 # {{ $namespace }}
-{{ include "cert" (dict "cert" .Values.monitoring.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride)) "forceNamespace" true "namespace" $namespace "dnsNames" (list .Values.monitoring.ingress.host) "Values" .Values ) }}
+{{ include "cert" (dict "cert" .Values.monitoring.ingress.tls "Release" .Release "name" (include "name" (dict "Release" .Release "name" "grafana" "nameOverride" .Values.monitoring.nameOverride)) "forceNamespace" true "namespace" $namespace "dnsNames" (list .Values.monitoring.ingress.host) "Values" .Values "ingressClass" .Values.monitoring.ingress.class) }}
 {{- end }}
 {{- end }}
